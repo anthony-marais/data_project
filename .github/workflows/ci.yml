@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version-file: ".python-version"
+
+      - name: Installer le package (lock figé)
+        run: uv sync --frozen
+
+      - name: Smoke import + CLI
+        run: |
+          uv run python -c "import presslake; print(presslake.__file__)"
+          uv run presslake
