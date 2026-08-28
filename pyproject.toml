@@ -1,0 +1,17 @@
+[project]
+name = "presslake"
+version = "0.1.0"
+description = "Datalake presse (RSS) puis RAG sourcé"
+readme = "README.md"
+authors = [
+    { name = "anthony-marais", email = "67336192+anthony-marais@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+presslake = "presslake:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
