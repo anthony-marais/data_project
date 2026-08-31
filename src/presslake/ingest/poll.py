@@ -1,18 +1,22 @@
 """
-Poll des flux RSS : fetch HTTP, parse XML, déduplication.
+Poll des flux RSS : fetch HTTP, parse XML, déduplication, écriture bronze.
 
-Chaîne :
+Chaîne complète (module 02 + 03) :
   Feed.url → httpx GET → feedparser → entries[]
   → clé composite (feed_id + item_key) → seen.json
+  → si nouveau : write_entry_bronze() → MinIO
 """
 
 from pathlib import Path
 
 import feedparser
 import httpx
+from botocore.client import BaseClient
 
+from presslake.ingest.bronze import item_key, write_entry_bronze
 from presslake.ingest.feeds import Feed
 from presslake.ingest.seen import DEFAULT_SEEN_PATH, load_seen, mark_seen, save_seen
+from presslake.storage.s3 import get_bucket, get_s3_client
 
 # Certains médias (France24, RFI, CNIL) renvoient 403 sans User-Agent explicite.
 USER_AGENT = "PressLake/0.1 (learning; local dev)"
@@ -33,57 +37,42 @@ def fetch_feed(url: str) -> feedparser.FeedParserDict:
     """
     response = httpx.get(
         url,
-        headers={"User-Agent": USER_AGENT},  # « headers » au pluriel (pas « header »)
+        headers={"User-Agent": USER_AGENT},
         timeout=30.0,
-        follow_redirects=True,  # suit les 301/308 (ex. certains flux institutionnels)
+        follow_redirects=True,
     )
-    response.raise_for_status()  # lève une exception si status != 2xx
+    response.raise_for_status()
 
-    # feedparser attend du texte XML (str), pas des bytes bruts.
     return feedparser.parse(response.text)
-
-
-def item_key(entry: dict) -> str:
-    """
-    Extrait une clé stable pour un article, quel que soit le format du flux.
-
-    Ordre de priorité (couvre RSS 2.0 et Atom) :
-      1. id   — courant en Atom
-      2. guid — courant en RSS 2.0
-      3. link — fallback universel (URL de l'article)
-
-    Raises:
-        ValueError: si aucun des trois champs n'est présent.
-    """
-    for field in ("id", "guid", "link"):
-        value = entry.get(field)
-        if value:
-            # str() : feedparser peut renvoyer des types exotiques pour guid.
-            return str(value).strip()
-
-    raise ValueError(f"item sans clé : title={entry.get('title')!r}")
 
 
 def composite_key(feed: Feed, entry: dict) -> str:
     """
-    Clé unique par flux ET par article.
+    Clé unique par flux ET par article (dédup locale seen.json).
 
-    Sans le préfixe feed.id, deux flux différents pourraient partager
-    la même URL de link → fausse dédup. Ex. : "france24:uuid-abc".
+    Ex. : "france24:uuid-abc"
     """
     return f"{feed.id}:{item_key(entry)}"
 
 
-def poll_feed(feed: Feed, seen: dict[str, str]) -> int:
+def poll_feed(
+    feed: Feed,
+    seen: dict[str, str],
+    *,
+    s3_client: BaseClient,
+    bucket: str,
+) -> int:
     """
-    Poll un seul flux et affiche les nouveaux items.
+    Poll un flux : dédup + écriture bronze pour les nouveaux items.
 
     Args:
         feed: flux à interroger.
-        seen: dict des clés déjà vues (modifié en place via mark_seen).
+        seen: clés déjà vues (modifié en place).
+        s3_client: client boto3 (créé une fois par run).
+        bucket: nom du bucket MinIO (ex. presslake).
 
     Returns:
-        Nombre d'items nouveaux pour ce flux.
+        Nombre d'items nouveaux écrits en bronze pour ce flux.
     """
     parsed = fetch_feed(feed.url)
     new_count = 0
@@ -91,13 +80,15 @@ def poll_feed(feed: Feed, seen: dict[str, str]) -> int:
     for entry in parsed.entries:
         key = composite_key(feed, entry)
 
-        # mark_seen retourne True si déjà connu → on skip (dédup).
         if mark_seen(seen, key):
             continue
 
         new_count += 1
         title = entry.get("title", "(sans titre)")
-        print(f"[NEW] {feed.id} | {title}")
+
+        # Module 03 : persistance immuable dans le lake.
+        s3_uri = write_entry_bronze(s3_client, bucket, feed, entry)
+        print(f"[NEW] {feed.id} | {title} | {s3_uri}")
 
     return new_count
 
@@ -107,24 +98,26 @@ def poll_all_dedup(
     seen_path: Path = DEFAULT_SEEN_PATH,
 ) -> int:
     """
-    Poll tous les flux configurés, avec déduplication persistée.
+    Poll tous les flux : seen.json + bronze MinIO.
 
     Workflow :
-      1. Charger seen.json (ou {} si premier run)
-      2. Pour chaque feed → poll_feed
-      3. Sauvegarder seen.json
-      4. Afficher le total de nouveaux items
+      1. Client S3 + bucket (une fois)
+      2. Charger seen.json
+      3. Pour chaque feed → poll_feed (fetch, dédup, bronze)
+      4. Sauvegarder seen.json
 
-    Critère *done* module 02 : 2e appel consécutif → total = 0.
-
-    Returns:
-        Nombre total de nouveaux items sur tous les flux.
+    Critère *done* :
+      - 1er run : [NEW] + s3://presslake/bronze/…
+      - 2e run  : → 0 nouvel(s) item(s)
     """
+    s3_client = get_s3_client()
+    bucket = get_bucket()
+
     seen = load_seen(seen_path)
     total_new = 0
 
     for feed in feeds:
-        total_new += poll_feed(feed, seen)
+        total_new += poll_feed(feed, seen, s3_client=s3_client, bucket=bucket)
 
     save_seen(seen, seen_path)
     print(f"\n→ {total_new} nouvel(s) item(s)")

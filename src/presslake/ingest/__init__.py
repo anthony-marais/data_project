@@ -1,1 +1,1 @@
-"""Couche ingest : lecture des flux RSS et déduplication (module 02)."""
+"""Couche ingest : RSS poll, dédup (02) et bronze MinIO (03)."""
