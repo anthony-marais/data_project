@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "boto3>=1.43.83",
+    "fastapi>=0.141.1",
     "feedparser>=6.0.14",
     "httpx>=0.28.1",
     "jsonschema>=4.26.0",
@@ -16,6 +17,7 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
     "trafilatura>=2.2.0",
+    "uvicorn[standard]>=0.52.4",
 ]
 
 [project.scripts]
