@@ -1,5 +1,5 @@
 """
-Initialisation du schéma catalogue (table articles).
+Initialisation du schéma catalogue (table articles + migrations).
 """
 
 from pathlib import Path
@@ -7,14 +7,19 @@ from pathlib import Path
 import psycopg
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 
 def init_schema(conn: psycopg.Connection) -> None:
     """
-    Exécute schema.sql (CREATE TABLE IF NOT EXISTS …).
+    Applique schema.sql puis les migrations triées par nom.
 
-    Idempotent : safe à relancer (db init plusieurs fois).
+    Idempotent : CREATE IF NOT EXISTS + ALTER ADD COLUMN IF NOT EXISTS.
     """
-    sql = SCHEMA_PATH.read_text(encoding="utf-8")
-    conn.execute(sql)
+    conn.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    if MIGRATIONS_DIR.exists():
+        for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            conn.execute(path.read_text(encoding="utf-8"))
+
     conn.commit()

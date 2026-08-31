@@ -14,6 +14,7 @@ from presslake.ingest.feeds import Feed
 
 # Statuts pipeline (voir schema.sql CHECK constraint).
 STATUS_FETCHED = "fetched"
+STATUS_PARSED = "parsed"
 
 
 def _parse_published_at(entry: dict) -> datetime | None:
@@ -87,6 +88,66 @@ def upsert_fetched_article(
 
     # rowcount = 1 si INSERT, 0 si conflit (DO NOTHING).
     return result.rowcount == 1
+
+
+def list_articles_by_status(
+    conn: psycopg.Connection,
+    status: str,
+    *,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Liste les articles catalogue par statut pipeline.
+
+    Utilisé par `presslake parse` pour ne traiter que status=fetched.
+    """
+    sql = """
+        SELECT feed_id, title, url, s3_uri, content_hash, status
+        FROM articles
+        WHERE status = %s
+        ORDER BY fetched_at ASC
+    """
+    params: list[Any] = [status]
+
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+
+    rows = conn.execute(sql, params).fetchall()
+
+    return [
+        {
+            "feed_id": r[0],
+            "title": r[1],
+            "url": r[2],
+            "s3_uri": r[3],
+            "content_hash": r[4],
+            "status": r[5],
+        }
+        for r in rows
+    ]
+
+
+def mark_parsed(
+    conn: psycopg.Connection,
+    url: str,
+    silver_s3_uri: str,
+) -> None:
+    """
+    Passe un article en status=parsed et enregistre le pointeur silver.
+
+    Idempotent : un article déjà parsed ne sera plus listé par list_articles_by_status(fetched).
+    """
+    conn.execute(
+        """
+        UPDATE articles
+        SET status = %s,
+            silver_s3_uri = %s,
+            updated_at = now()
+        WHERE url = %s AND status = %s
+        """,
+        (STATUS_PARSED, silver_s3_uri, url, STATUS_FETCHED),
+    )
 
 
 def count_articles(conn: psycopg.Connection) -> int:
