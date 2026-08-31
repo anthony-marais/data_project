@@ -41,5 +41,7 @@ jobs:
           from presslake.api.app import create_app
           c = TestClient(create_app())
           assert c.get('/health').status_code == 200
+          assert c.get('/metrics').status_code == 200
+          assert c.get('/ops/status').status_code == 200
           print('api ok')
           "

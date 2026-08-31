@@ -3,10 +3,12 @@ Application FastAPI — catalogue PressLake (lecture seule).
 
 Lancer : uv run presslake serve
 Docs   : http://localhost:8000/docs
+Métriques : http://localhost:8000/metrics
 """
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 import psycopg
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from presslake.api.deps import get_db
 from presslake.api.queries import (
@@ -15,9 +17,16 @@ from presslake.api.queries import (
     list_articles,
     stats_by_status,
 )
-from presslake.api.schemas import ArticleListOut, ArticleOut, HealthOut, StatsOut
+from presslake.api.schemas import (
+    ArticleListOut,
+    ArticleOut,
+    HealthOut,
+    OpsStatusOut,
+    StatsOut,
+)
+from presslake.observability.alerts import evaluate_ops_status
+from presslake.observability.catalog_metrics import refresh_metrics_from_postgres
 
-# Limite max pour éviter de charger tout le catalogue d'un coup.
 MAX_PAGE_SIZE = 200
 
 
@@ -27,7 +36,7 @@ def create_app() -> FastAPI:
         title="PressLake Catalogue API",
         description=(
             "API lecture seule sur le catalogue Postgres. "
-            "Expose inventaire articles, statuts pipeline, pointeurs MinIO."
+            "Expose inventaire articles, statuts pipeline, pointeurs MinIO, métriques ops."
         ),
         version="0.1.0",
     )
@@ -36,6 +45,34 @@ def create_app() -> FastAPI:
     def health() -> HealthOut:
         """Santé du service (ne vérifie pas Postgres — endpoint léger)."""
         return HealthOut()
+
+    @app.get("/metrics", tags=["ops"])
+    def metrics(conn: psycopg.Connection = Depends(get_db)) -> Response:
+        """
+        Métriques Prometheus.
+
+        Les jauges catalogue et worker sont rafraîchies depuis Postgres à chaque
+        scrape (persistant même si poll/parse tournent en CLI séparée).
+        """
+        refresh_metrics_from_postgres(conn)
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    @app.get("/ops/status", response_model=OpsStatusOut, tags=["ops"])
+    def ops_status(conn: psycopg.Connection = Depends(get_db)) -> OpsStatusOut:
+        """
+        État ops : dernière écriture catalogue + alerte si > 6 h sans write.
+
+        Seuil configurable via PRESSLAKE_STALE_HOURS (défaut 6).
+        """
+        status = evaluate_ops_status(conn)
+        return OpsStatusOut(
+            last_write_at=status.last_write_at,
+            seconds_since_write=status.seconds_since_write,
+            stale_threshold_seconds=status.stale_threshold_seconds,
+            stale=status.stale,
+            articles_total=status.articles_total,
+            message=status.message,
+        )
 
     @app.get("/articles", response_model=ArticleListOut, tags=["catalog"])
     def get_articles(
@@ -48,11 +85,6 @@ def create_app() -> FastAPI:
         offset: int = Query(default=0, ge=0),
         conn: psycopg.Connection = Depends(get_db),
     ) -> ArticleListOut:
-        """
-        Liste paginée des articles du catalogue.
-
-        Tri : plus récemment ingérés en premier (`fetched_at DESC`).
-        """
         total = count_articles_filtered(conn, feed_id=feed_id, status=status)
         items = list_articles(
             conn,
@@ -68,7 +100,6 @@ def create_app() -> FastAPI:
         article_id: int,
         conn: psycopg.Connection = Depends(get_db),
     ) -> ArticleOut:
-        """Détail d'un article par id Postgres (BIGSERIAL)."""
         article = get_article_by_id(conn, article_id)
         if article is None:
             raise HTTPException(status_code=404, detail="Article introuvable")
@@ -76,12 +107,10 @@ def create_app() -> FastAPI:
 
     @app.get("/stats", response_model=StatsOut, tags=["catalog"])
     def get_stats(conn: psycopg.Connection = Depends(get_db)) -> StatsOut:
-        """Comptage des articles par statut pipeline."""
         total, by_status = stats_by_status(conn)
         return StatsOut(total=total, by_status=by_status)
 
     return app
 
 
-# Instance importée par uvicorn : presslake.api.app:app
 app = create_app()
