@@ -2,14 +2,17 @@
 Point d'entrée CLI : uv run presslake <commande>
 
 Commandes :
-  poll     — ingest RSS + bronze MinIO + catalogue Postgres
-  parse    — bronze → silver (trafilatura) + status parsed
-  db init  — schéma catalogue + migrations
+  poll       — ingest RSS + bronze + catalogue
+  parse      — bronze → silver
+  validate   — JSON Schema (examples | lake)
+  db init    — schéma Postgres + migrations
 """
 
 import argparse
+import sys
 
 from presslake.catalog.db import init_schema
+from presslake.contracts.run import run_validate
 from presslake.ingest.feeds import load_feeds
 from presslake.ingest.poll import poll_all_dedup
 from presslake.parse.run import parse_all
@@ -24,20 +27,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser(
-        "poll",
-        help="Poll RSS → bronze MinIO → catalogue Postgres (dédup).",
-    )
+    sub.add_parser("poll", help="Poll RSS → bronze → catalogue.")
 
-    parse_parser = sub.add_parser(
-        "parse",
-        help="Parser bronze → silver pour les articles status=fetched.",
+    parse_parser = sub.add_parser("parse", help="Parser bronze → silver.")
+    parse_parser.add_argument("--limit", type=int, default=None)
+
+    validate_parser = sub.add_parser(
+        "validate",
+        help="Valider les contrats JSON Schema.",
     )
-    parse_parser.add_argument(
+    validate_parser.add_argument(
+        "target",
+        choices=["examples", "lake"],
+        help="examples = fichiers contracts/examples ; lake = échantillon MinIO.",
+    )
+    validate_parser.add_argument(
         "--limit",
         type=int,
-        default=None,
-        help="Nombre max d'articles à parser (debug).",
+        default=10,
+        help="Nombre d'articles pour validate lake.",
     )
 
     db_parser = sub.add_parser("db", help="Opérations base de données.")
@@ -51,13 +59,15 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
 
     if args.command == "poll":
-        feeds = load_feeds()
-        poll_all_dedup(feeds)
+        poll_all_dedup(load_feeds())
 
     elif args.command == "parse":
         parse_all(limit=args.limit)
 
+    elif args.command == "validate":
+        sys.exit(run_validate(target=args.target, limit=args.limit))
+
     elif args.command == "db" and args.db_command == "init":
         with get_connection() as conn:
             init_schema(conn)
-        print("Schéma catalogue initialisé (table articles + migrations).")
+        print("Schéma catalogue initialisé.")

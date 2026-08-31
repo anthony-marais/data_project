@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presslake.local/contracts/bronze.v1.schema.json",
+  "title": "PressLake Bronze Envelope v1",
+  "description": "Objet immuable écrit par l'ingest RSS (module 03).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "feed_id",
+    "item_key",
+    "content_hash",
+    "title",
+    "link",
+    "fetched_at",
+    "source",
+    "raw"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "feed_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "item_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "link": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "published": {
+      "type": ["string", "null"]
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string",
+      "const": "rss_item"
+    },
+    "raw": {
+      "type": "object"
+    }
+  }
+}

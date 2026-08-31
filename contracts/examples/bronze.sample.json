@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "feed_id": "france24",
+  "item_key": "demo-uuid-0001",
+  "content_hash": "fb78ed72468c45b3895375890d347f6cf7c19e1f9ebe81578325efa95e362aa3",
+  "title": "Exemple bronze PressLake",
+  "link": "https://www.france24.com/fr/example-article",
+  "published": "Mon, 31 Aug 2026 10:00:00 GMT",
+  "fetched_at": "2026-08-31T12:00:00+00:00",
+  "source": "rss_item",
+  "raw": {
+    "title": "Exemple bronze PressLake",
+    "link": "https://www.france24.com/fr/example-article",
+    "summary": "<p>Extrait HTML du flux RSS.</p>"
+  }
+}

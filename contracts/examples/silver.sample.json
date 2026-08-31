@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "feed_id": "france24",
+  "content_hash": "fb78ed72468c45b3895375890d347f6cf7c19e1f9ebe81578325efa95e362aa3",
+  "title": "Exemple silver PressLake",
+  "canonical_url": "https://www.france24.com/fr/example-article",
+  "author": "France 24",
+  "published": "Mon, 31 Aug 2026 10:00:00 GMT",
+  "parsed_at": "2026-08-31T12:05:00+00:00",
+  "text": "Texte lisible extrait par trafilatura. Le LLM et l'indexeur ne lisent que cette couche.",
+  "text_source": "rss_summary",
+  "bronze_s3_uri": "s3://presslake/bronze/source=france24/dt=2026-08-31/fb78ed72468c45b3895375890d347f6cf7c19e1f9ebe81578325efa95e362aa3.json"
+}

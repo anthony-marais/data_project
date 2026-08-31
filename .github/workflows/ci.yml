@@ -30,3 +30,6 @@ jobs:
         run: |
           uv run python -c "import presslake; print(presslake.__file__)"
           uv run presslake poll --help
+
+      - name: Contrats JSON Schema (exemples)
+        run: uv run presslake validate examples
