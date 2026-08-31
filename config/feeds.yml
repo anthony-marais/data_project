@@ -1,0 +1,45 @@
+# PressLake — flux module 02
+# Critères : public, guid/link stable, pas de paywall
+
+feeds:
+  - id: france24
+    name: France 24
+    url: https://www.france24.com/fr/rss
+    lang: fr
+    category: presse
+
+  - id: rfi
+    name: RFI
+    url: https://www.rfi.fr/fr/rss
+    lang: fr
+    category: presse
+
+  - id: lemonde-une
+    name: Le Monde — à la une
+    url: https://www.lemonde.fr/rss/une.xml
+    lang: fr
+    category: presse
+
+  - id: bbc-world
+    name: BBC World
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    lang: en
+    category: presse
+
+  - id: cnil
+    name: CNIL
+    url: https://www.cnil.fr/fr/rss.xml
+    lang: fr
+    category: institution
+
+  - id: eu-press
+    name: Commission européenne
+    url: https://ec.europa.eu/commission/presscorner/api/rss
+    lang: en
+    category: institution
+
+  - id: hnrss
+    name: Hacker News (hnrss)
+    url: https://hnrss.org/frontpage
+    lang: en
+    category: tech

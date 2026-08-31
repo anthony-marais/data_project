@@ -7,7 +7,11 @@ authors = [
     { name = "anthony-marais", email = "67336192+anthony-marais@users.noreply.github.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "feedparser>=6.0.14",
+    "httpx>=0.28.1",
+    "pyyaml>=6.0.3",
+]
 
 [project.scripts]
 presslake = "presslake:main"
@@ -15,3 +19,9 @@ presslake = "presslake:main"
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "jupyter>=1.1.1",
+]
