@@ -10,7 +10,7 @@ from presslake.contracts.run import run_validate
 from presslake.ingest.feeds import load_feeds
 from presslake.ingest.poll import poll_all_dedup
 from presslake.observability.alerts import evaluate_ops_status
-from presslake.parse.run import parse_all
+from presslake.parse.run import parse_all, parse_from_kafka
 from presslake.storage.postgres import get_connection
 
 
@@ -26,6 +26,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     parse_parser = sub.add_parser("parse", help="Parser bronze → silver.")
     parse_parser.add_argument("--limit", type=int, default=None)
+    parse_parser.add_argument(
+        "--from-kafka",
+        action="store_true",
+        help="Consommer presslake.articles.ingested au lieu du catalogue.",
+    )
+    parse_parser.add_argument(
+        "--replay",
+        action="store_true",
+        help="Rejeu depuis l'offset 0 (avec --from-kafka).",
+    )
 
     validate_parser = sub.add_parser("validate", help="Valider les contrats JSON Schema.")
     validate_parser.add_argument("target", choices=["examples", "lake"])
@@ -75,7 +85,13 @@ def main(argv: list[str] | None = None) -> None:
         poll_all_dedup(load_feeds())
 
     elif args.command == "parse":
-        parse_all(limit=args.limit)
+        if args.replay and not args.from_kafka:
+            print("Erreur : --replay nécessite --from-kafka.", file=sys.stderr)
+            sys.exit(2)
+        if args.from_kafka:
+            parse_from_kafka(replay=args.replay, limit=args.limit)
+        else:
+            parse_all(limit=args.limit)
 
     elif args.command == "validate":
         sys.exit(run_validate(target=args.target, limit=args.limit))

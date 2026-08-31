@@ -6,6 +6,7 @@ Chaîne complète (modules 02–04) :
   → clé composite → seen.json
   → si nouveau : write_entry_bronze() → MinIO
               → upsert_fetched_article() → Postgres
+              → publish article.ingested → Redpanda (module 09)
 """
 
 from pathlib import Path
@@ -16,7 +17,8 @@ import psycopg
 from botocore.client import BaseClient
 
 from presslake.catalog.articles import upsert_fetched_article
-from presslake.ingest.bronze import item_key, write_entry_bronze
+from presslake.events.producer import EventProducer
+from presslake.ingest.bronze import content_hash, item_key, write_entry_bronze
 from presslake.ingest.feeds import Feed
 from presslake.ingest.seen import DEFAULT_SEEN_PATH, load_seen, mark_seen, save_seen
 from presslake.observability.metrics import record_poll_finished
@@ -51,6 +53,7 @@ def poll_feed(
     s3_client: BaseClient,
     bucket: str,
     conn: psycopg.Connection,
+    producer: EventProducer | None = None,
 ) -> int:
     """
     Poll un flux : dédup + bronze + catalogue pour les nouveaux items.
@@ -74,8 +77,18 @@ def poll_feed(
         s3_uri = write_entry_bronze(s3_client, bucket, feed, entry)
 
         # Module 04 : ligne catalogue (url unique, idempotent).
-        upsert_fetched_article(conn, feed, entry, s3_uri=s3_uri)
+        inserted = upsert_fetched_article(conn, feed, entry, s3_uri=s3_uri)
         conn.commit()
+
+        if inserted and producer and producer.enabled:
+            stable_key = item_key(entry)
+            producer.publish_article_ingested(
+                feed_id=feed.id,
+                url=str(entry["link"]).strip(),
+                s3_uri=s3_uri,
+                content_hash=content_hash(stable_key),
+                item_key=stable_key,
+            )
 
         print(f"[NEW] {feed.id} | {title} | {s3_uri}")
 
@@ -99,7 +112,7 @@ def poll_all_dedup(
     seen = load_seen(seen_path)
     total_new = 0
 
-    with get_connection() as conn:
+    with get_connection() as conn, EventProducer() as producer:
         for feed in feeds:
             total_new += poll_feed(
                 feed,
@@ -107,6 +120,7 @@ def poll_all_dedup(
                 s3_client=s3_client,
                 bucket=bucket,
                 conn=conn,
+                producer=producer,
             )
         log_worker_run(conn, JOB_POLL, new_items=total_new)
         conn.commit()

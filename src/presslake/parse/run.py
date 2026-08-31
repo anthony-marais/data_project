@@ -4,8 +4,10 @@ Boucle de parsing : articles fetched → silver + status parsed.
 
 import psycopg
 from botocore.client import BaseClient
+from botocore.exceptions import ClientError
 
 from presslake.catalog.articles import list_articles_by_status, mark_parsed
+from presslake.events.consumer import article_dict_from_event, iter_article_ingested
 from presslake.parse.extract import extract_text_from_bronze
 from presslake.parse.silver import write_silver_from_bronze
 from presslake.observability.metrics import record_parse_finished
@@ -21,6 +23,8 @@ def parse_article(
     s3_client: BaseClient,
     bucket: str,
     article: dict,
+    *,
+    reparse: bool = False,
 ) -> str:
     """
     Parse un article catalogue : bronze → silver → update Postgres.
@@ -52,7 +56,7 @@ def parse_article(
         text_source=text_source,
     )
 
-    mark_parsed(conn, article["url"], silver_uri)
+    mark_parsed(conn, article["url"], silver_uri, reparse=reparse)
     conn.commit()
 
     title = article.get("title") or bronze.get("title") or "(sans titre)"
@@ -91,6 +95,49 @@ def parse_all(*, limit: int | None = None) -> int:
         conn.commit()
 
     print(f"\n→ {parsed_count} article(s) parsé(s)", end="")
+    if errors:
+        print(f", {errors} ignoré(s)")
+    else:
+        print()
+
+    record_parse_finished(parsed=parsed_count, errors=errors)
+    return parsed_count
+
+
+def parse_from_kafka(*, replay: bool = False, limit: int | None = None) -> int:
+    """
+    Parse via le bus Kafka : consomme article.ingested → silver.
+
+    Args:
+        replay: rejeu depuis l'offset 0 (reconstruit le silver).
+        limit: nombre max d'événements à traiter.
+    """
+    s3_client = get_s3_client()
+    bucket = get_bucket()
+    parsed_count = 0
+    errors = 0
+
+    with get_connection() as conn:
+        for event in iter_article_ingested(replay=replay, limit=limit):
+            article = article_dict_from_event(event)
+            try:
+                parse_article(
+                    conn,
+                    s3_client,
+                    bucket,
+                    article,
+                    reparse=replay,
+                )
+                parsed_count += 1
+            except (ValueError, OSError, KeyError, ClientError) as exc:
+                errors += 1
+                print(f"[SKIP] {article.get('url', '?')} — {exc}")
+
+        log_worker_run(conn, JOB_PARSE, new_items=parsed_count, errors=errors)
+        conn.commit()
+
+    mode = "replay" if replay else "kafka"
+    print(f"\n→ {parsed_count} article(s) parsé(s) ({mode})", end="")
     if errors:
         print(f", {errors} ignoré(s)")
     else:

@@ -133,12 +133,28 @@ def mark_parsed(
     conn: psycopg.Connection,
     url: str,
     silver_s3_uri: str,
+    *,
+    reparse: bool = False,
 ) -> None:
     """
     Passe un article en status=parsed et enregistre le pointeur silver.
 
-    Idempotent : un article déjà parsed ne sera plus listé par list_articles_by_status(fetched).
+    Idempotent : un article déjà parsed ne sera plus listé par list_articles_by_status(fetched),
+    sauf si reparse=True (rejeu Kafka offset 0).
     """
+    if reparse:
+        conn.execute(
+            """
+            UPDATE articles
+            SET status = %s,
+                silver_s3_uri = %s,
+                updated_at = now()
+            WHERE url = %s
+            """,
+            (STATUS_PARSED, silver_s3_uri, url),
+        )
+        return
+
     conn.execute(
         """
         UPDATE articles
