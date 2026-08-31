@@ -166,6 +166,7 @@ def search_articles(
         hits.append(
             {
                 "score": hit["_score"],
+                "content_hash": source.get("content_hash"),
                 "feed_id": source.get("feed_id"),
                 "title": source.get("title"),
                 "content_lang": source.get("content_lang"),

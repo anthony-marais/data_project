@@ -6,6 +6,10 @@ Docs   : http://localhost:8000/docs
 Métriques : http://localhost:8000/metrics
 """
 
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 import psycopg
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -17,29 +21,52 @@ from presslake.api.queries import (
     list_articles,
     stats_by_status,
 )
+from presslake.api.openai_compat import router as openai_router
 from presslake.api.schemas import (
     ArticleListOut,
     ArticleOut,
+    ChatRequest,
+    ChatResponse,
     HealthOut,
     OpsStatusOut,
+    RetrieveOut,
+    RetrievedPassageOut,
     StatsOut,
 )
 from presslake.observability.alerts import evaluate_ops_status
 from presslake.observability.catalog_metrics import refresh_metrics_from_postgres
+from presslake.retrieve.hybrid import retrieve_passages
+from presslake.rag.chat import answer_question
+from presslake.rag.ollama import OllamaError
+from presslake.rag.warmup import warmup_rag_stack
 
 MAX_PAGE_SIZE = 200
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _rag_lifespan(_app: FastAPI):
+    """Précharge embed + Ollama au démarrage (hors event loop)."""
+    try:
+        await asyncio.to_thread(warmup_rag_stack)
+    except Exception:
+        logger.exception("Échec du warmup RAG au démarrage")
+    yield
 
 
 def create_app() -> FastAPI:
     """Fabrique l'app (utile pour tests et uvicorn)."""
     app = FastAPI(
-        title="PressLake Catalogue API",
+        title="PressLake API",
         description=(
-            "API lecture seule sur le catalogue Postgres. "
-            "Expose inventaire articles, statuts pipeline, pointeurs MinIO, métriques ops."
+            "Catalogue Postgres, retrieve hybride RAG, chat Ollama local. "
+            "Compatible Open WebUI / LibreChat via /v1/chat/completions."
         ),
         version="0.1.0",
+        lifespan=_rag_lifespan,
     )
+
+    app.include_router(openai_router)
 
     @app.get("/health", response_model=HealthOut, tags=["ops"])
     def health() -> HealthOut:
@@ -109,6 +136,73 @@ def create_app() -> FastAPI:
     def get_stats(conn: psycopg.Connection = Depends(get_db)) -> StatsOut:
         total, by_status = stats_by_status(conn)
         return StatsOut(total=total, by_status=by_status)
+
+    @app.get("/retrieve", response_model=RetrieveOut, tags=["rag"])
+    def get_retrieve(
+        q: str = Query(..., min_length=1, description="Question ou mots-clés"),
+        limit: int = Query(default=10, ge=1, le=50),
+        lang: str | None = Query(default=None, pattern="^(fr|en)$"),
+    ) -> RetrieveOut:
+        """
+        Retrieve hybride one-shot (BM25 + Qdrant, fusion RRF).
+
+        Interface réutilisable par le chat (module 12), MCP (14) et toute UI externe.
+        Pas d'appel LLM — uniquement des passages citables.
+        """
+        passages = retrieve_passages(q, limit=limit, lang=lang)
+        return RetrieveOut(
+            query=q,
+            limit=limit,
+            passages=[
+                RetrievedPassageOut(
+                    text=p.text,
+                    score=p.score,
+                    sources=list(p.sources),
+                    content_hash=p.content_hash,
+                    chunk_index=p.chunk_index,
+                    feed_id=p.feed_id,
+                    title=p.title,
+                    content_lang=p.content_lang,
+                    canonical_url=p.canonical_url,
+                    silver_s3_uri=p.silver_s3_uri,
+                )
+                for p in passages
+            ],
+        )
+
+    @app.post("/chat", response_model=ChatResponse, tags=["rag"])
+    def post_chat(body: ChatRequest) -> ChatResponse:
+        """
+        Chat RAG JSON simple (retrieve + Ollama local).
+
+        Pour Open WebUI / LibreChat, préférer POST /v1/chat/completions.
+        """
+        try:
+            result = answer_question(body.message, limit=body.limit, lang=body.lang)
+        except OllamaError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        return ChatResponse(
+            message=body.message,
+            answer=result.answer,
+            refused=result.refused,
+            model=result.model,
+            passages=[
+                RetrievedPassageOut(
+                    text=p.text,
+                    score=p.score,
+                    sources=list(p.sources),
+                    content_hash=p.content_hash,
+                    chunk_index=p.chunk_index,
+                    feed_id=p.feed_id,
+                    title=p.title,
+                    content_lang=p.content_lang,
+                    canonical_url=p.canonical_url,
+                    silver_s3_uri=p.silver_s3_uri,
+                )
+                for p in result.passages
+            ],
+        )
 
     return app
 

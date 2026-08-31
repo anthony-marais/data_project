@@ -8,8 +8,15 @@ load_dotenv()
 
 COLLECTION_CHUNKS = "presslake-chunks"
 # Multilingue (ADR 0003) — 384 dimensions, supporté par fastembed.
-EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_EMBEDDING_MODEL = (
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
 VECTOR_SIZE = 384
+
+
+def embedding_model() -> str:
+    """Modèle fastembed — changer nécessite un `presslake embed --recreate`."""
+    return os.environ.get("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).strip()
 
 
 def qdrant_url() -> str:

@@ -67,3 +67,44 @@ class OpsStatusOut(BaseModel):
     stale: bool
     articles_total: int
     message: str
+
+
+class RetrievedPassageOut(BaseModel):
+    """Passage retrievé (hybride BM25 + vecteurs)."""
+
+    text: str
+    score: float = Field(description="Score RRF après fusion (comparer dans une même requête)")
+    sources: list[str] = Field(description="Moteurs ayant contribué : bm25, vector")
+    content_hash: str | None = None
+    chunk_index: int | None = None
+    feed_id: str | None = None
+    title: str | None = None
+    content_lang: str | None = None
+    canonical_url: str | None = None
+    silver_s3_uri: str | None = None
+
+
+class RetrieveOut(BaseModel):
+    """GET /retrieve — retrieve hybride one-shot."""
+
+    query: str
+    limit: int
+    passages: list[RetrievedPassageOut]
+
+
+class ChatRequest(BaseModel):
+    """POST /chat — RAG one-shot (JSON simple, hors OpenAI-compat)."""
+
+    message: str = Field(min_length=1)
+    limit: int = Field(default=8, ge=1, le=20)
+    lang: str | None = Field(default=None, pattern="^(fr|en)$")
+
+
+class ChatResponse(BaseModel):
+    """Réponse POST /chat."""
+
+    message: str
+    answer: str
+    refused: bool
+    model: str | None = None
+    passages: list[RetrievedPassageOut]

@@ -4,13 +4,13 @@ from functools import lru_cache
 
 from fastembed import TextEmbedding
 
-from presslake.vector.config import EMBEDDING_MODEL
+from presslake.vector.config import embedding_model
 
 
 @lru_cache(maxsize=1)
 def get_embedding_model() -> TextEmbedding:
     """Charge le modèle une fois (téléchargement ONNX au premier appel)."""
-    return TextEmbedding(model_name=EMBEDDING_MODEL)
+    return TextEmbedding(model_name=embedding_model())
 
 
 def embed_passages(texts: list[str]) -> list[list[float]]:

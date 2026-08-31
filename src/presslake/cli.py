@@ -11,6 +11,10 @@ from presslake.ingest.feeds import load_feeds
 from presslake.ingest.poll import poll_all_dedup
 from presslake.observability.alerts import evaluate_ops_status
 from presslake.parse.run import parse_all, parse_from_kafka
+from presslake.retrieve.hybrid import retrieve_passages
+from presslake.rag.chat import answer_question
+from presslake.rag.ollama import OllamaError, check_ollama_available
+from presslake.rag.config import ollama_model
 from presslake.search.index import search_articles
 from presslake.search.run import index_all
 from presslake.vector.collection import search_similar
@@ -95,7 +99,67 @@ def build_parser() -> argparse.ArgumentParser:
         help="Filtre content_lang dans Qdrant.",
     )
 
+    retrieve_parser = sub.add_parser(
+        "retrieve",
+        help="Retrieve hybride BM25 + Qdrant (passages citables, sans LLM).",
+    )
+    retrieve_parser.add_argument("query", help="Question ou mots-clés.")
+    retrieve_parser.add_argument("--limit", type=int, default=10)
+    retrieve_parser.add_argument(
+        "--lang",
+        choices=["fr", "en"],
+        default=None,
+        help="Filtre content_lang sur les deux moteurs.",
+    )
+    retrieve_parser.add_argument(
+        "--bm25-only",
+        action="store_true",
+        help="OpenSearch uniquement (debug).",
+    )
+    retrieve_parser.add_argument(
+        "--vector-only",
+        action="store_true",
+        help="Qdrant uniquement (debug).",
+    )
+
+    chat_parser = sub.add_parser("chat", help="Chat RAG sur le corpus (Ollama local).")
+    chat_parser.add_argument("question", nargs="?", default=None, help="Question (mode one-shot).")
+    chat_parser.add_argument("--limit", type=int, default=None, help="Nombre de passages retrieve.")
+    chat_parser.add_argument("--lang", choices=["fr", "en"], default=None)
+    chat_parser.add_argument(
+        "--retrieve-only",
+        action="store_true",
+        help="Afficher les passages sans appeler Ollama.",
+    )
+
     return parser
+
+
+def _print_retrieved_passages(passages: list, *, lang: str | None = None) -> None:
+    if not passages:
+        print("Aucun passage.")
+        return
+    lang_hint = f" (lang={lang})" if lang else ""
+    for rank, passage in enumerate(passages, start=1):
+        title = passage.title or "(sans titre)"
+        src = "+".join(passage.sources)
+        cl = passage.content_lang or "?"
+        chunk = (
+            f" chunk {passage.chunk_index}"
+            if passage.chunk_index is not None
+            else ""
+        )
+        print(
+            f"{rank}. [RRF {passage.score:.4f}] [{src}] {passage.feed_id} [{cl}]{lang_hint} "
+            f"|{chunk} {title[:55]}"
+        )
+        if passage.canonical_url:
+            print(f"   {passage.canonical_url}")
+        text = (passage.text or "")[:140]
+        if text:
+            print(f"   … {text}…")
+        if passage.silver_s3_uri:
+            print(f"   silver: {passage.silver_s3_uri}")
 
 
 def _run_serve(host: str, port: int, reload: bool) -> None:
@@ -204,3 +268,73 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"   … {text}…")
             if hit.get("silver_s3_uri"):
                 print(f"   silver: {hit['silver_s3_uri']}")
+
+    elif args.command == "retrieve":
+        passages = retrieve_passages(
+            args.query,
+            limit=args.limit,
+            lang=args.lang,
+            bm25_only=args.bm25_only,
+            vector_only=args.vector_only,
+        )
+        _print_retrieved_passages(passages, lang=args.lang)
+
+    elif args.command == "chat":
+        _run_chat(
+            question=args.question,
+            limit=args.limit,
+            lang=args.lang,
+            retrieve_only=args.retrieve_only,
+        )
+
+
+def _run_chat(
+    *,
+    question: str | None,
+    limit: int | None,
+    lang: str | None,
+    retrieve_only: bool,
+) -> None:
+    if not retrieve_only and not check_ollama_available():
+        print(
+            f"Ollama inaccessible — lancer `ollama serve` puis `ollama pull {ollama_model()}`.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    def _ask_one(q: str) -> None:
+        try:
+            result = answer_question(
+                q,
+                limit=limit,
+                lang=lang,
+                skip_llm=retrieve_only,
+            )
+        except OllamaError as exc:
+            print(f"Erreur Ollama : {exc}", file=sys.stderr)
+            return
+
+        if result.passages:
+            print("\n--- Sources retrieve ---")
+            for i, p in enumerate(result.passages, start=1):
+                print(f"[{i}] {p.citation_label()} ({'+'.join(p.sources)})")
+                if p.silver_s3_uri:
+                    print(f"    {p.silver_s3_uri}")
+        print(f"\n{result.answer}\n")
+
+    if question:
+        _ask_one(question)
+        return
+
+    print("PressLake chat (corpus RSS). Tape 'quit' pour quitter.\n")
+    while True:
+        try:
+            line = input("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not line:
+            continue
+        if line.lower() in {"quit", "exit", "q"}:
+            break
+        _ask_one(line)
