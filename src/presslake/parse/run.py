@@ -8,14 +8,23 @@ from botocore.exceptions import ClientError
 
 from presslake.catalog.articles import list_articles_by_status, mark_parsed
 from presslake.events.consumer import article_dict_from_event, iter_article_ingested
-from presslake.parse.extract import extract_text_from_bronze
-from presslake.parse.silver import write_silver_from_bronze
+from presslake.ingest.feeds import feed_lang_by_id
 from presslake.observability.metrics import record_parse_finished
 from presslake.observability.worker_runs import JOB_PARSE, log_worker_run
+from presslake.parse.extract import extract_text_from_bronze
+from presslake.parse.lang import detect_content_lang
+from presslake.parse.silver import write_silver_from_bronze
 from presslake.storage.postgres import get_connection
 from presslake.storage.s3 import get_bucket, get_json_object, get_s3_client, parse_s3_uri
 
 STATUS_FETCHED = "fetched"
+
+
+def resolve_feed_lang(article: dict) -> str:
+    """Langue déclarée du flux (catalogue ou feeds.yml)."""
+    if article.get("feed_lang"):
+        return article["feed_lang"]
+    return feed_lang_by_id().get(article["feed_id"], "und")
 
 
 def parse_article(
@@ -41,10 +50,13 @@ def parse_article(
     bronze_uri = article["s3_uri"]
     bronze_bucket, bronze_key = parse_s3_uri(bronze_uri)
 
-    # Le bucket catalogue peut différer en théorie ; on lit l'URI enregistrée.
     bronze = get_json_object(s3_client, bronze_bucket, bronze_key)
 
     text, text_source = extract_text_from_bronze(bronze)
+    feed_lang = resolve_feed_lang(article)
+    title = article.get("title") or bronze.get("title") or ""
+    detect_input = f"{title}\n{text}".strip()
+    content_lang, confidence = detect_content_lang(detect_input, fallback=feed_lang)
 
     silver_uri = write_silver_from_bronze(
         s3_client,
@@ -54,13 +66,26 @@ def parse_article(
         bronze_key=bronze_key,
         text=text,
         text_source=text_source,
+        feed_lang=feed_lang,
+        content_lang=content_lang,
+        content_lang_confidence=confidence,
     )
 
-    mark_parsed(conn, article["url"], silver_uri, reparse=reparse)
+    mark_parsed(
+        conn,
+        article["url"],
+        silver_uri,
+        feed_lang=feed_lang,
+        content_lang=content_lang,
+        reparse=reparse,
+    )
     conn.commit()
 
-    title = article.get("title") or bronze.get("title") or "(sans titre)"
-    print(f"[PARSED] {article['feed_id']} | {title[:60]} | {silver_uri} ({text_source})")
+    display_title = title or "(sans titre)"
+    print(
+        f"[PARSED] {article['feed_id']} | {display_title[:60]} | "
+        f"{silver_uri} ({text_source}, lang={content_lang})"
+    )
 
     return silver_uri
 

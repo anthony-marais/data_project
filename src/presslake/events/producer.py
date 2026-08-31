@@ -45,6 +45,7 @@ class EventProducer:
         s3_uri: str,
         content_hash: str,
         item_key: str,
+        feed_lang: str | None = None,
     ) -> None:
         """
         Publie un événement article.ingested sur presslake.articles.ingested.
@@ -62,6 +63,8 @@ class EventProducer:
             "content_hash": content_hash,
             "item_key": item_key,
         }
+        if feed_lang:
+            payload["feed_lang"] = feed_lang
         future = self._producer.send(
             TOPIC_ARTICLES_INGESTED,
             key=feed_id,

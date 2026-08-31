@@ -11,6 +11,8 @@ from presslake.ingest.feeds import load_feeds
 from presslake.ingest.poll import poll_all_dedup
 from presslake.observability.alerts import evaluate_ops_status
 from presslake.parse.run import parse_all, parse_from_kafka
+from presslake.search.index import search_articles
+from presslake.search.run import index_all
 from presslake.storage.postgres import get_connection
 
 
@@ -53,6 +55,24 @@ def build_parser() -> argparse.ArgumentParser:
     db_parser = sub.add_parser("db", help="Opérations base de données.")
     db_sub = db_parser.add_subparsers(dest="db_command", required=True)
     db_sub.add_parser("init", help="Applique schema.sql + migrations.")
+
+    index_parser = sub.add_parser("index", help="Indexer silver → OpenSearch.")
+    index_parser.add_argument("--limit", type=int, default=None)
+    index_parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Supprime et recrée l'index (re-indexe parsed + indexed).",
+    )
+
+    search_parser = sub.add_parser("search", help="Recherche BM25 OpenSearch.")
+    search_parser.add_argument("query", help="Termes à chercher.")
+    search_parser.add_argument("--limit", type=int, default=5)
+    search_parser.add_argument(
+        "--lang",
+        choices=["fr", "en"],
+        default=None,
+        help="Filtre content_lang + analyzer dédié.",
+    )
 
     return parser
 
@@ -106,3 +126,28 @@ def main(argv: list[str] | None = None) -> None:
         with get_connection() as conn:
             init_schema(conn)
         print("Schéma catalogue initialisé.")
+
+    elif args.command == "index":
+        index_all(limit=args.limit, recreate=args.recreate)
+
+    elif args.command == "search":
+        from presslake.search.client import get_opensearch_client
+
+        hits = search_articles(
+            get_opensearch_client(),
+            args.query,
+            limit=args.limit,
+            lang=args.lang,
+        )
+        if not hits:
+            print("Aucun résultat.")
+            return
+        lang_hint = f" (lang={args.lang})" if args.lang else ""
+        for rank, hit in enumerate(hits, start=1):
+            title = hit.get("title") or "(sans titre)"
+            cl = hit.get("content_lang") or "?"
+            print(f"{rank}. [{hit['score']:.2f}] {hit['feed_id']} [{cl}]{lang_hint} | {title[:70]}")
+            if hit.get("canonical_url"):
+                print(f"   {hit['canonical_url']}")
+            if hit.get("snippet"):
+                print(f"   … {hit['snippet'][:120]}…")

@@ -41,6 +41,9 @@ def build_silver_envelope(
     text: str,
     text_source: str,
     bronze_s3_uri: str,
+    feed_lang: str,
+    content_lang: str,
+    content_lang_confidence: float | None = None,
 ) -> dict[str, Any]:
     """
     Enveloppe silver v1 — texte lisible + metadata.
@@ -48,7 +51,7 @@ def build_silver_envelope(
     Champs alignés architecture : titre, texte, canonical_url, hash, source extraction.
     """
     raw = bronze.get("raw") or {}
-    return {
+    envelope: dict[str, Any] = {
         "schema_version": 1,
         "feed_id": bronze["feed_id"],
         "content_hash": bronze["content_hash"],
@@ -60,7 +63,12 @@ def build_silver_envelope(
         "text": text,
         "text_source": text_source,
         "bronze_s3_uri": bronze_s3_uri,
+        "feed_lang": feed_lang,
+        "content_lang": content_lang,
     }
+    if content_lang_confidence is not None:
+        envelope["content_lang_confidence"] = content_lang_confidence
+    return envelope
 
 
 def write_silver_from_bronze(
@@ -72,6 +80,9 @@ def write_silver_from_bronze(
     bronze_key: str,
     text: str,
     text_source: str,
+    feed_lang: str,
+    content_lang: str,
+    content_lang_confidence: float | None = None,
 ) -> str:
     """
     Construit l'enveloppe silver et l'écrit dans MinIO.
@@ -84,6 +95,9 @@ def write_silver_from_bronze(
         text=text,
         text_source=text_source,
         bronze_s3_uri=bronze_s3_uri,
+        feed_lang=feed_lang,
+        content_lang=content_lang,
+        content_lang_confidence=content_lang_confidence,
     )
     validate_silver(envelope)
 
