@@ -33,3 +33,13 @@ jobs:
 
       - name: Contrats JSON Schema (exemples)
         run: uv run presslake validate examples
+
+      - name: API catalogue (TestClient)
+        run: |
+          uv run python -c "
+          from fastapi.testclient import TestClient
+          from presslake.api.app import create_app
+          c = TestClient(create_app())
+          assert c.get('/health').status_code == 200
+          print('api ok')
+          "
