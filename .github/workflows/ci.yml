@@ -30,4 +30,4 @@ jobs:
       - name: Smoke import + CLI
         run: |
           uv run python -c "import presslake; print(presslake.__file__)"
-          uv run presslake
+          uv run presslake poll --help
