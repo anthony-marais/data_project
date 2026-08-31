@@ -8,6 +8,8 @@ from botocore.client import BaseClient
 from presslake.catalog.articles import list_articles_by_status, mark_parsed
 from presslake.parse.extract import extract_text_from_bronze
 from presslake.parse.silver import write_silver_from_bronze
+from presslake.observability.metrics import record_parse_finished
+from presslake.observability.worker_runs import JOB_PARSE, log_worker_run
 from presslake.storage.postgres import get_connection
 from presslake.storage.s3 import get_bucket, get_json_object, get_s3_client, parse_s3_uri
 
@@ -85,10 +87,14 @@ def parse_all(*, limit: int | None = None) -> int:
                 errors += 1
                 print(f"[SKIP] {article.get('url', '?')} — {exc}")
 
+        log_worker_run(conn, JOB_PARSE, new_items=parsed_count, errors=errors)
+        conn.commit()
+
     print(f"\n→ {parsed_count} article(s) parsé(s)", end="")
     if errors:
         print(f", {errors} ignoré(s)")
     else:
         print()
 
+    record_parse_finished(parsed=parsed_count, errors=errors)
     return parsed_count

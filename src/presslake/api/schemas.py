@@ -56,3 +56,14 @@ class HealthOut(BaseModel):
 
     status: str = "ok"
     service: str = "presslake-catalog"
+
+
+class OpsStatusOut(BaseModel):
+    """GET /ops/status — surveillance worker ingest."""
+
+    last_write_at: datetime | None
+    seconds_since_write: int | None
+    stale_threshold_seconds: int
+    stale: bool
+    articles_total: int
+    message: str
