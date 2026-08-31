@@ -14,7 +14,9 @@
     "parsed_at",
     "text",
     "text_source",
-    "bronze_s3_uri"
+    "bronze_s3_uri",
+    "feed_lang",
+    "content_lang"
   ],
   "properties": {
     "schema_version": {
@@ -57,6 +59,24 @@
     "bronze_s3_uri": {
       "type": "string",
       "pattern": "^s3://"
+    },
+    "feed_lang": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 3,
+      "description": "Langue déclarée du flux (feeds.yml), ex. fr, en."
+    },
+    "content_lang": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 3,
+      "description": "Langue détectée du texte (ISO 639-1), ou und."
+    },
+    "content_lang_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probabilité langdetect (absent si fallback)."
     }
   }
 }

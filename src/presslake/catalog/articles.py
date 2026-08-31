@@ -15,6 +15,7 @@ from presslake.ingest.feeds import Feed
 # Statuts pipeline (voir schema.sql CHECK constraint).
 STATUS_FETCHED = "fetched"
 STATUS_PARSED = "parsed"
+STATUS_INDEXED = "indexed"
 
 
 def _parse_published_at(entry: dict) -> datetime | None:
@@ -67,10 +68,10 @@ def upsert_fetched_article(
         """
         INSERT INTO articles (
             feed_id, url, item_key, content_hash, s3_uri,
-            title, published_at, status
+            title, published_at, status, feed_lang
         ) VALUES (
             %s, %s, %s, %s, %s,
-            %s, %s, %s
+            %s, %s, %s, %s
         )
         ON CONFLICT (url) DO NOTHING
         """,
@@ -83,6 +84,7 @@ def upsert_fetched_article(
             entry.get("title"),
             _parse_published_at(entry),
             STATUS_FETCHED,
+            feed.lang,
         ),
     )
 
@@ -102,7 +104,8 @@ def list_articles_by_status(
     Utilisé par `presslake parse` pour ne traiter que status=fetched.
     """
     sql = """
-        SELECT feed_id, title, url, s3_uri, content_hash, status, silver_s3_uri
+        SELECT feed_id, title, url, s3_uri, content_hash, status, silver_s3_uri,
+               feed_lang, content_lang
         FROM articles
         WHERE status = %s
         ORDER BY fetched_at ASC
@@ -124,6 +127,52 @@ def list_articles_by_status(
             "content_hash": r[4],
             "status": r[5],
             "silver_s3_uri": r[6],
+            "feed_lang": r[7],
+            "content_lang": r[8],
+        }
+        for r in rows
+    ]
+
+
+def list_articles_to_index(
+    conn: psycopg.Connection,
+    *,
+    include_indexed: bool = False,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Articles prêts pour OpenSearch (parsed, ou aussi indexed si re-index).
+    """
+    statuses = [STATUS_PARSED]
+    if include_indexed:
+        statuses.append(STATUS_INDEXED)
+
+    sql = """
+        SELECT feed_id, title, url, s3_uri, content_hash, status, silver_s3_uri,
+               feed_lang, content_lang
+        FROM articles
+        WHERE status = ANY(%s)
+        ORDER BY fetched_at ASC
+    """
+    params: list[Any] = [statuses]
+
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+
+    rows = conn.execute(sql, params).fetchall()
+
+    return [
+        {
+            "feed_id": r[0],
+            "title": r[1],
+            "url": r[2],
+            "s3_uri": r[3],
+            "content_hash": r[4],
+            "status": r[5],
+            "silver_s3_uri": r[6],
+            "feed_lang": r[7],
+            "content_lang": r[8],
         }
         for r in rows
     ]
@@ -134,6 +183,8 @@ def mark_parsed(
     url: str,
     silver_s3_uri: str,
     *,
+    feed_lang: str,
+    content_lang: str,
     reparse: bool = False,
 ) -> None:
     """
@@ -148,10 +199,12 @@ def mark_parsed(
             UPDATE articles
             SET status = %s,
                 silver_s3_uri = %s,
+                feed_lang = %s,
+                content_lang = %s,
                 updated_at = now()
             WHERE url = %s
             """,
-            (STATUS_PARSED, silver_s3_uri, url),
+            (STATUS_PARSED, silver_s3_uri, feed_lang, content_lang, url),
         )
         return
 
@@ -160,10 +213,25 @@ def mark_parsed(
         UPDATE articles
         SET status = %s,
             silver_s3_uri = %s,
+            feed_lang = %s,
+            content_lang = %s,
             updated_at = now()
         WHERE url = %s AND status = %s
         """,
-        (STATUS_PARSED, silver_s3_uri, url, STATUS_FETCHED),
+        (STATUS_PARSED, silver_s3_uri, feed_lang, content_lang, url, STATUS_FETCHED),
+    )
+
+
+def mark_indexed(conn: psycopg.Connection, url: str) -> None:
+    """Passe un article en status=indexed après écriture OpenSearch."""
+    conn.execute(
+        """
+        UPDATE articles
+        SET status = %s,
+            updated_at = now()
+        WHERE url = %s AND status = %s
+        """,
+        (STATUS_INDEXED, url, STATUS_PARSED),
     )
 
 

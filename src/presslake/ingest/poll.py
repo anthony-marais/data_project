@@ -88,6 +88,7 @@ def poll_feed(
                 s3_uri=s3_uri,
                 content_hash=content_hash(stable_key),
                 item_key=stable_key,
+                feed_lang=feed.lang,
             )
 
         print(f"[NEW] {feed.id} | {title} | {s3_uri}")

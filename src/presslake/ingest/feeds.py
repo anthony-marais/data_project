@@ -54,3 +54,8 @@ def load_feeds(path: Path | None = None) -> list[Feed]:
     # Chaque row est un dict {"id": ..., "name": ..., ...}
     # Feed(**row) déplie le dict en arguments du constructeur.
     return [Feed(**row) for row in raw["feeds"]]
+
+
+def feed_lang_by_id(path: Path | None = None) -> dict[str, str]:
+    """Map feed_id → lang déclaré dans feeds.yml."""
+    return {feed.id: feed.lang for feed in load_feeds(path)}

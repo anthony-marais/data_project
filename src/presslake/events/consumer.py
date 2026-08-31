@@ -73,10 +73,13 @@ def iter_article_ingested(
 
 def article_dict_from_event(event: dict[str, Any]) -> dict[str, Any]:
     """Convertit un événement Kafka en dict compatible parse_article()."""
-    return {
+    article: dict[str, Any] = {
         "feed_id": event["feed_id"],
         "url": event["url"],
         "s3_uri": event["s3_uri"],
         "content_hash": event["content_hash"],
         "title": None,
     }
+    if event.get("feed_lang"):
+        article["feed_lang"] = event["feed_lang"]
+    return article

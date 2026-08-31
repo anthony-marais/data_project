@@ -85,7 +85,34 @@ services:
       retries: 12
       start_period: 15s
 
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"   # API HTTP
+      - "9600:9600"   # Performance analyzer
+    volumes:
+      - opensearchdata:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+
 volumes:
   pgdata:
   miniodata:
   redpandadata:
+  opensearchdata:
