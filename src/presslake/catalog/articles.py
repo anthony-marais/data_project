@@ -16,6 +16,7 @@ from presslake.ingest.feeds import Feed
 STATUS_FETCHED = "fetched"
 STATUS_PARSED = "parsed"
 STATUS_INDEXED = "indexed"
+STATUS_EMBEDDED = "embedded"
 
 
 def _parse_published_at(entry: dict) -> datetime | None:
@@ -232,6 +233,63 @@ def mark_indexed(conn: psycopg.Connection, url: str) -> None:
         WHERE url = %s AND status = %s
         """,
         (STATUS_INDEXED, url, STATUS_PARSED),
+    )
+
+
+def list_articles_to_embed(
+    conn: psycopg.Connection,
+    *,
+    include_embedded: bool = False,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Articles prêts pour Qdrant (indexed, ou aussi embedded si re-embed).
+    """
+    statuses = [STATUS_INDEXED]
+    if include_embedded:
+        statuses.append(STATUS_EMBEDDED)
+
+    sql = """
+        SELECT feed_id, title, url, s3_uri, content_hash, status, silver_s3_uri,
+               feed_lang, content_lang
+        FROM articles
+        WHERE status = ANY(%s)
+        ORDER BY fetched_at ASC
+    """
+    params: list[Any] = [statuses]
+
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+
+    rows = conn.execute(sql, params).fetchall()
+
+    return [
+        {
+            "feed_id": r[0],
+            "title": r[1],
+            "url": r[2],
+            "s3_uri": r[3],
+            "content_hash": r[4],
+            "status": r[5],
+            "silver_s3_uri": r[6],
+            "feed_lang": r[7],
+            "content_lang": r[8],
+        }
+        for r in rows
+    ]
+
+
+def mark_embedded(conn: psycopg.Connection, url: str) -> None:
+    """Passe un article en status=embedded après écriture Qdrant."""
+    conn.execute(
+        """
+        UPDATE articles
+        SET status = %s,
+            updated_at = now()
+        WHERE url = %s AND status = ANY(%s)
+        """,
+        (STATUS_EMBEDDED, url, [STATUS_INDEXED, STATUS_EMBEDDED]),
     )
 
 

@@ -13,6 +13,9 @@ from presslake.observability.alerts import evaluate_ops_status
 from presslake.parse.run import parse_all, parse_from_kafka
 from presslake.search.index import search_articles
 from presslake.search.run import index_all
+from presslake.vector.collection import search_similar
+from presslake.vector.embed import embed_query
+from presslake.vector.run import embed_all
 from presslake.storage.postgres import get_connection
 
 
@@ -72,6 +75,24 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["fr", "en"],
         default=None,
         help="Filtre content_lang + analyzer dédié.",
+    )
+
+    embed_parser = sub.add_parser("embed", help="Chunker + embedder silver → Qdrant.")
+    embed_parser.add_argument("--limit", type=int, default=None)
+    embed_parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Supprime et recrée la collection (re-embed indexed + embedded).",
+    )
+
+    similar_parser = sub.add_parser("similar", help="Recherche sémantique Qdrant.")
+    similar_parser.add_argument("query", help="Question ou phrase en langage naturel.")
+    similar_parser.add_argument("--limit", type=int, default=5)
+    similar_parser.add_argument(
+        "--lang",
+        choices=["fr", "en"],
+        default=None,
+        help="Filtre content_lang dans Qdrant.",
     )
 
     return parser
@@ -151,3 +172,35 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"   {hit['canonical_url']}")
             if hit.get("snippet"):
                 print(f"   … {hit['snippet'][:120]}…")
+
+    elif args.command == "embed":
+        embed_all(limit=args.limit, recreate=args.recreate)
+
+    elif args.command == "similar":
+        from presslake.vector.client import get_qdrant_client
+
+        vector = embed_query(args.query)
+        hits = search_similar(
+            get_qdrant_client(),
+            vector,
+            limit=args.limit,
+            lang=args.lang,
+        )
+        if not hits:
+            print("Aucun résultat.")
+            return
+        lang_hint = f" (lang={args.lang})" if args.lang else ""
+        for rank, hit in enumerate(hits, start=1):
+            title = hit.get("title") or "(sans titre)"
+            cl = hit.get("content_lang") or "?"
+            print(
+                f"{rank}. [{hit['score']:.3f}] {hit['feed_id']} [{cl}]{lang_hint} "
+                f"| chunk {hit.get('chunk_index')} | {title[:55]}"
+            )
+            if hit.get("canonical_url"):
+                print(f"   {hit['canonical_url']}")
+            text = (hit.get("text") or "")[:140]
+            if text:
+                print(f"   … {text}…")
+            if hit.get("silver_s3_uri"):
+                print(f"   silver: {hit['silver_s3_uri']}")
