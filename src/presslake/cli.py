@@ -1,50 +1,47 @@
 """
 Point d'entrée CLI : uv run presslake <commande>
 
-Aujourd'hui une seule commande : poll
-Demain : d'autres sous-commandes (parse, index, etc.) s'ajouteront ici.
+Commandes :
+  poll     — ingest RSS + bronze MinIO + catalogue Postgres
+  db init  — crée la table articles (schéma module 04)
 """
 
 import argparse
 
+from presslake.catalog.db import init_schema
 from presslake.ingest.feeds import load_feeds
 from presslake.ingest.poll import poll_all_dedup
+from presslake.storage.postgres import get_connection
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """
-    Construit l'arbre argparse.
-
-    Structure :
-      presslake poll   → lance l'ingest RSS avec dédup
-    """
     parser = argparse.ArgumentParser(
         prog="presslake",
         description="Datalake presse — ingest RSS, lake, RAG sourcé.",
     )
 
-    # Sous-commandes obligatoires : force l'utilisateur à taper « poll », pas juste « presslake ».
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser(
         "poll",
-        help="Interroge les flux RSS configurés (config/feeds.yml) et affiche les nouveaux items.",
+        help="Poll RSS → bronze MinIO → catalogue Postgres (dédup).",
     )
+
+    db_parser = sub.add_parser("db", help="Opérations base de données.")
+    db_sub = db_parser.add_subparsers(dest="db_command", required=True)
+    db_sub.add_parser("init", help="Applique schema.sql (table articles).")
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
-    """
-    Fonction appelée par pyproject.toml → [project.scripts] presslake = presslake:main
-
-    Args:
-        argv: arguments CLI (None = sys.argv). Utile pour les tests.
-    """
     args = build_parser().parse_args(argv)
 
     if args.command == "poll":
-        # 1. Config YAML → objets Feed
         feeds = load_feeds()
-        # 2. Fetch + parse + dédup + sauvegarde seen.json
         poll_all_dedup(feeds)
+
+    elif args.command == "db" and args.db_command == "init":
+        with get_connection() as conn:
+            init_schema(conn)
+        print("Schéma catalogue initialisé (table articles).")
