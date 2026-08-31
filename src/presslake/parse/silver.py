@@ -11,6 +11,7 @@ from typing import Any
 
 from botocore.client import BaseClient
 
+from presslake.contracts.validate import validate_silver
 from presslake.storage.s3 import put_json_object
 
 # Reprend la partition dt= de la clé bronze (cohérence médaillon).
@@ -84,6 +85,8 @@ def write_silver_from_bronze(
         text_source=text_source,
         bronze_s3_uri=bronze_s3_uri,
     )
+    validate_silver(envelope)
+
     dt = dt_from_bronze_key(bronze_key)
     key = silver_s3_key(bronze["feed_id"], dt, bronze["content_hash"])
     return put_json_object(client, bucket, key, envelope)

@@ -15,6 +15,7 @@ from typing import Any
 
 from botocore.client import BaseClient
 
+from presslake.contracts.validate import validate_bronze
 from presslake.ingest.feeds import Feed
 
 RAW_ENTRY_FIELDS = (
@@ -130,6 +131,8 @@ def put_bronze(
     Note idempotence : un 2e put sur la même clé écrase avec le même chemin ;
     seen.json évite les re-traitements inutiles côté ingest.
     """
+    validate_bronze(envelope)
+
     body = json.dumps(envelope, ensure_ascii=False, indent=2).encode("utf-8")
     client.put_object(
         Bucket=bucket,

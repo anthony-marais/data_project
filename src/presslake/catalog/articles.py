@@ -102,7 +102,7 @@ def list_articles_by_status(
     Utilisé par `presslake parse` pour ne traiter que status=fetched.
     """
     sql = """
-        SELECT feed_id, title, url, s3_uri, content_hash, status
+        SELECT feed_id, title, url, s3_uri, content_hash, status, silver_s3_uri
         FROM articles
         WHERE status = %s
         ORDER BY fetched_at ASC
@@ -123,6 +123,7 @@ def list_articles_by_status(
             "s3_uri": r[3],
             "content_hash": r[4],
             "status": r[5],
+            "silver_s3_uri": r[6],
         }
         for r in rows
     ]

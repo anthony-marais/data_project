@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presslake.local/contracts/silver.v1.schema.json",
+  "title": "PressLake Silver Document v1",
+  "description": "Texte lisible + metadata produit par le parser (module 05).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "feed_id",
+    "content_hash",
+    "title",
+    "canonical_url",
+    "parsed_at",
+    "text",
+    "text_source",
+    "bronze_s3_uri"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "feed_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "canonical_url": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "author": {
+      "type": ["string", "null"]
+    },
+    "published": {
+      "type": ["string", "null"]
+    },
+    "parsed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "text_source": {
+      "type": "string",
+      "enum": ["rss_summary", "permalink", "title_only"]
+    },
+    "bronze_s3_uri": {
+      "type": "string",
+      "pattern": "^s3://"
+    }
+  }
+}
