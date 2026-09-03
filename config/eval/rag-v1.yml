@@ -1,0 +1,39 @@
+# Jeu d'eval RAG PressLake (module 13).
+# Scores mécaniques : retrieve / refus / citations — pas de LLM-as-judge.
+#
+# Les cas refuse utilisent des tokens absents du corpus (pas « Macron » / « Coca »)
+# sinon BM25 et Qdrant renvoient des voisins hors sujet.
+version: 1
+name: rag-v1
+
+cases:
+  - id: refuse-nonce-xylophonie
+    difficulty: one_shot
+    expect: refuse
+    question: >
+      Quelle est la population de XylophonieEval9f3a-ZorglubPressLake
+      en l'an 1287 ?
+
+  - id: refuse-nonce-licorne
+    difficulty: one_shot
+    expect: refuse
+    question: >
+      Combien de licornes QzxtmPlk-Eval vivent dans le cratère
+      de Mont-Fictif-PressLake ?
+
+  - id: grounded-himalaya
+    difficulty: one_shot
+    expect: grounded
+    question: Que dit le corpus sur la crue dans l'Himalaya ?
+
+  - id: grounded-nepal
+    difficulty: one_shot
+    expect: grounded
+    question: Que dit le corpus sur le Népal ?
+
+  - id: hard-comparer-deux-sujets
+    difficulty: hard
+    expect: grounded
+    question: >
+      Compare deux sujets distincts du corpus (pays ou événements
+      différents) et cite une source pour chacun.

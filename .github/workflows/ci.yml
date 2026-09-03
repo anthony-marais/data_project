@@ -48,6 +48,9 @@ jobs:
         run: |
           uv run python -c "import presslake; print(presslake.__file__)"
           uv run presslake poll --help
+          uv run presslake eval --help
+          uv run presslake guide
+          uv run presslake pipeline --help
 
       - name: Contrats JSON Schema (exemples)
         run: uv run presslake validate examples
@@ -65,4 +68,23 @@ jobs:
           assert c.get('/metrics').status_code == 200
           assert c.get('/ops/status').status_code == 200
           print('api ok')
+          "
+
+      - name: Eval set + scores mécaniques (sans OpenSearch)
+        run: |
+          uv run python -c "
+          from presslake.eval.dataset import load_eval_set
+          from presslake.eval.score import score_case
+          from presslake.eval.tracing import tracing_enabled
+          from presslake.rag.chat import ChatAnswer
+          from presslake.rag.prompt import REFUSAL_MESSAGE
+
+          s = load_eval_set()
+          assert s.name == 'rag-v1'
+          refuse = next(c for c in s.cases if c.expect == 'refuse')
+          empty = ChatAnswer(question=refuse.question, answer=REFUSAL_MESSAGE, passages=[], refused=True)
+          sc = score_case(refuse, empty, skip_llm=True)
+          assert sc.ok, sc.reason
+          assert tracing_enabled() is False
+          print('eval ok', len(s.cases), 'cases')
           "

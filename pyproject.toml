@@ -16,6 +16,7 @@ dependencies = [
     "jsonschema>=4.26.0",
     "kafka-python>=3.0.11",
     "langdetect>=1.0.9",
+    "langfuse>=4.15.1",
     "opensearch-py>=3.2.0",
     "prometheus-client>=0.26.0",
     "psycopg[binary]>=3.3.4",
@@ -23,6 +24,7 @@ dependencies = [
     "python-snappy>=0.7.3",
     "pyyaml>=6.0.3",
     "qdrant-client>=1.19.0",
+    "rich>=15.0.0",
     "trafilatura>=2.2.0",
     "uvicorn[standard]>=0.52.4",
 ]

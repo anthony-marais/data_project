@@ -26,6 +26,17 @@ def rag_top_k() -> int:
     return max(1, min(20, int(raw)))
 
 
+def rag_min_vector_score() -> float:
+    """
+    Seuil cosine Qdrant : en dessous, un voisin n'est pas un vrai hit.
+
+    Qdrant renvoie toujours top-k ; sans seuil le chat ne refuse jamais.
+    0 désactive le filtre.
+    """
+    raw = os.environ.get("RAG_MIN_VECTOR_SCORE", "0.45")
+    return max(0.0, min(1.0, float(raw)))
+
+
 def ollama_keep_alive() -> str:
     """Durée de maintien du modèle en RAM côté Ollama (ex. 30m)."""
     return os.environ.get("OLLAMA_KEEP_ALIVE", DEFAULT_OLLAMA_KEEP_ALIVE).strip()

@@ -8,6 +8,7 @@ from presslake.catalog.articles import list_articles_to_index, mark_indexed
 from presslake.search.client import get_opensearch_client
 from presslake.search.config import INDEX_ARTICLES
 from presslake.search.index import ensure_index, index_document, recreate_index, silver_to_document
+from presslake.output import info, report_progress
 from presslake.storage.postgres import get_connection
 from presslake.storage.s3 import get_json_object, get_s3_client, parse_s3_uri
 
@@ -40,7 +41,7 @@ def index_article(
 
     title = doc.get("title") or "(sans titre)"
     lang = doc.get("content_lang", "?")
-    print(f"[INDEXED] {doc['feed_id']} | {title[:60]} | lang={lang}")
+    info(f"[INDEXED] {doc['feed_id']} | {title[:60]} | lang={lang}")
 
 
 def index_all(*, limit: int | None = None, recreate: bool = False) -> int:
@@ -57,7 +58,7 @@ def index_all(*, limit: int | None = None, recreate: bool = False) -> int:
 
     if recreate:
         recreate_index(os_client)
-        print(f"Index {INDEX_ARTICLES} recréé.")
+        info(f"Index {INDEX_ARTICLES} recréé.")
 
     with get_connection() as conn:
         articles = list_articles_to_index(
@@ -66,18 +67,20 @@ def index_all(*, limit: int | None = None, recreate: bool = False) -> int:
             limit=limit,
         )
 
-        for article in articles:
+        article_total = len(articles)
+        for index, article in enumerate(articles, start=1):
             try:
                 index_article(conn, s3_client, article, os_client=os_client)
                 indexed_count += 1
             except (ValueError, OSError, ClientError, KeyError) as exc:
                 errors += 1
                 print(f"[SKIP] {article.get('url', '?')} — {exc}")
+            report_progress(index, article_total)
 
-    print(f"\n→ {indexed_count} article(s) indexé(s)", end="")
+    info(f"\n→ {indexed_count} article(s) indexé(s)", end="")
     if errors:
-        print(f", {errors} ignoré(s)")
+        info(f", {errors} ignoré(s)")
     else:
-        print()
+        info()
 
     return indexed_count

@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 
 from presslake.catalog.articles import STATUS_INDEXED, list_articles_to_embed, mark_embedded
 from presslake.chunk.envelope import silver_to_chunks
+from presslake.output import info, report_progress
 from presslake.storage.postgres import get_connection
 from presslake.storage.s3 import get_json_object, get_s3_client, parse_s3_uri
 from presslake.vector.client import get_qdrant_client
@@ -44,7 +45,7 @@ def embed_article(
     conn.commit()
 
     title = article.get("title") or "(sans titre)"
-    print(
+    info(
         f"[EMBEDDED] {article['feed_id']} | {title[:60]} | "
         f"{written} chunk(s)"
     )
@@ -66,7 +67,7 @@ def embed_all(*, limit: int | None = None, recreate: bool = False) -> int:
 
     if recreate:
         recreate_collection(qdrant_client)
-        print(f"Collection {COLLECTION_CHUNKS} recréée.")
+        info(f"Collection {COLLECTION_CHUNKS} recréée.")
 
     with get_connection() as conn:
         articles = list_articles_to_embed(
@@ -75,7 +76,8 @@ def embed_all(*, limit: int | None = None, recreate: bool = False) -> int:
             limit=limit,
         )
 
-        for article in articles:
+        article_total = len(articles)
+        for index, article in enumerate(articles, start=1):
             try:
                 written = embed_article(
                     conn,
@@ -88,14 +90,15 @@ def embed_all(*, limit: int | None = None, recreate: bool = False) -> int:
             except (ValueError, OSError, ClientError, KeyError) as exc:
                 errors += 1
                 print(f"[SKIP] {article.get('url', '?')} — {exc}")
+            report_progress(index, article_total)
 
-    print(
+    info(
         f"\n→ {article_count} article(s) embedé(s), {chunk_count} chunk(s)",
         end="",
     )
     if errors:
-        print(f", {errors} ignoré(s)")
+        info(f", {errors} ignoré(s)")
     else:
-        print()
+        info()
 
     return chunk_count

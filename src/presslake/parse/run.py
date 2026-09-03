@@ -11,6 +11,7 @@ from presslake.events.consumer import article_dict_from_event, iter_article_inge
 from presslake.ingest.feeds import feed_lang_by_id
 from presslake.observability.metrics import record_parse_finished
 from presslake.observability.worker_runs import JOB_PARSE, log_worker_run
+from presslake.output import info, report_progress
 from presslake.parse.extract import extract_text_from_bronze
 from presslake.parse.lang import detect_content_lang
 from presslake.parse.silver import write_silver_from_bronze
@@ -82,7 +83,7 @@ def parse_article(
     conn.commit()
 
     display_title = title or "(sans titre)"
-    print(
+    info(
         f"[PARSED] {article['feed_id']} | {display_title[:60]} | "
         f"{silver_uri} ({text_source}, lang={content_lang})"
     )
@@ -108,22 +109,24 @@ def parse_all(*, limit: int | None = None) -> int:
     with get_connection() as conn:
         articles = list_articles_by_status(conn, STATUS_FETCHED, limit=limit)
 
-        for article in articles:
+        article_total = len(articles)
+        for index, article in enumerate(articles, start=1):
             try:
                 parse_article(conn, s3_client, bucket, article)
                 parsed_count += 1
             except (ValueError, OSError) as exc:
                 errors += 1
                 print(f"[SKIP] {article.get('url', '?')} — {exc}")
+            report_progress(index, article_total)
 
         log_worker_run(conn, JOB_PARSE, new_items=parsed_count, errors=errors)
         conn.commit()
 
-    print(f"\n→ {parsed_count} article(s) parsé(s)", end="")
+    info(f"\n→ {parsed_count} article(s) parsé(s)", end="")
     if errors:
-        print(f", {errors} ignoré(s)")
+        info(f", {errors} ignoré(s)")
     else:
-        print()
+        info()
 
     record_parse_finished(parsed=parsed_count, errors=errors)
     return parsed_count
@@ -157,16 +160,17 @@ def parse_from_kafka(*, replay: bool = False, limit: int | None = None) -> int:
             except (ValueError, OSError, KeyError, ClientError) as exc:
                 errors += 1
                 print(f"[SKIP] {article.get('url', '?')} — {exc}")
+            report_progress(parsed_count + errors, None)
 
         log_worker_run(conn, JOB_PARSE, new_items=parsed_count, errors=errors)
         conn.commit()
 
     mode = "replay" if replay else "kafka"
-    print(f"\n→ {parsed_count} article(s) parsé(s) ({mode})", end="")
+    info(f"\n→ {parsed_count} article(s) parsé(s) ({mode})", end="")
     if errors:
-        print(f", {errors} ignoré(s)")
+        info(f", {errors} ignoré(s)")
     else:
-        print()
+        info()
 
     record_parse_finished(parsed=parsed_count, errors=errors)
     return parsed_count
