@@ -129,6 +129,18 @@ uv run presslake mcp
 #   search = retrieve hybride ; read = silver MinIO (jamais bronze)
 
 ------------------------------------------------------------------------
+8. Spark backfill (module 15) — PAS le quotidien
+------------------------------------------------------------------------
+
+# Job Scala : silver JSON MinIO → gold/layer=silver_parquet (colonnes, partitions).
+# Première fois : construire l'image (sbt assembly, plusieurs minutes).
+# uv run presslake spark --build
+# uv run presslake spark
+# uv run presslake spark --list
+
+# Le chat / MCP ne lisent pas ce parquet. Voie volume seulement.
+
+------------------------------------------------------------------------
 Script shell (mêmes étapes, exécutable)
 ------------------------------------------------------------------------
   ./scripts/presslake-a-to-z.sh           # infra + db + pipeline ingest

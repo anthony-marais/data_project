@@ -1,5 +1,5 @@
 """
-Validation JSON Schema des enveloppes bronze et silver.
+Validation JSON Schema des enveloppes bronze, silver et gold.
 
 Les schémas vivent dans contracts/ à la racine du repo (versionnés git).
 docs/contracts/ reste la doc humaine locale ; contracts/*.schema.json est la source de vérité CI.
@@ -17,6 +17,7 @@ CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "contracts"
 
 BRONZE_SCHEMA_PATH = CONTRACTS_DIR / "bronze.v1.schema.json"
 SILVER_SCHEMA_PATH = CONTRACTS_DIR / "silver.v1.schema.json"
+GOLD_SCHEMA_PATH = CONTRACTS_DIR / "gold.v1.schema.json"
 
 
 class ContractValidationError(ValueError):
@@ -50,6 +51,16 @@ def validate_silver(payload: dict[str, Any]) -> None:
         ContractValidationError: si un champ manque ou est invalide.
     """
     _validate(payload, SILVER_SCHEMA_PATH, layer="silver")
+
+
+def validate_gold(payload: dict[str, Any]) -> None:
+    """
+    Valide une ligne gold v1 (projection silver + partition dt).
+
+    Raises:
+        ContractValidationError: si un champ manque ou est invalide.
+    """
+    _validate(payload, GOLD_SCHEMA_PATH, layer="gold")
 
 
 def _validate(payload: dict[str, Any], schema_path: Path, *, layer: str) -> None:

@@ -281,6 +281,41 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--limit", type=int, default=None)
     eval_parser.add_argument("--lang", choices=["fr", "en"], default=None)
 
+    spark_parser = sub.add_parser(
+        "spark",
+        help="Backfill Spark Scala : silver JSON → gold parquet.",
+        description=(
+            "Voie volume (module 15), pas le poll quotidien. Lance le job dans Compose "
+            "(profil spark) vers MinIO. Prérequis : silver déjà parsé, MinIO up, "
+            "image construite (`--build` la première fois)."
+        ),
+    )
+    spark_parser.add_argument(
+        "--input",
+        default=None,
+        help="URI s3a silver (défaut s3a://<bucket>/silver).",
+    )
+    spark_parser.add_argument(
+        "--output",
+        default=None,
+        help="URI s3a gold (défaut s3a://<bucket>/gold/layer=silver_parquet).",
+    )
+    spark_parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Reconstruire l'image (sbt assembly) avant de lancer.",
+    )
+    spark_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Afficher la commande Docker sans l'exécuter.",
+    )
+    spark_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Lister les objets MinIO sous gold/ (sans lancer Spark).",
+    )
+
     sub.add_parser(
         "mcp",
         help="Serveur MCP stdio (outils search + read).",
@@ -477,6 +512,19 @@ def main(argv: list[str] | None = None) -> None:
                 skip_llm=args.skip_llm,
                 limit=args.limit,
                 lang=args.lang,
+            )
+        )
+
+    elif args.command == "spark":
+        from presslake.spark_job.run import run_backfill
+
+        sys.exit(
+            run_backfill(
+                input_uri=args.input,
+                output_uri=args.output,
+                build=args.build,
+                dry_run=args.dry_run,
+                list_only=args.list,
             )
         )
 
