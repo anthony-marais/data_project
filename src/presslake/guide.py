@@ -141,6 +141,17 @@ uv run presslake mcp
 # Le chat / MCP ne lisent pas ce parquet. Voie volume seulement.
 
 ------------------------------------------------------------------------
+9. Embeddings versionnés (module 16)
+------------------------------------------------------------------------
+
+# Recall@k sur les cas grounded (même jeu que eval).
+# uv run presslake recall --write-metrics
+# uv run presslake recall --register
+# uv run presslake recall --rollback
+# MLflow local : uv add mlflow && uv run presslake recall --mlflow
+# UI : uv run mlflow ui --backend-store-uri ./mlruns
+
+------------------------------------------------------------------------
 Script shell (mêmes étapes, exécutable)
 ------------------------------------------------------------------------
   ./scripts/presslake-a-to-z.sh           # infra + db + pipeline ingest

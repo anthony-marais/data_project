@@ -1,0 +1,8 @@
+{
+  "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "vector_size": 384,
+  "k": 4,
+  "recall_at_k": null,
+  "eval_set": "rag-v1",
+  "note": "Baseline git. Après un bon run : uv run presslake recall --register"
+}

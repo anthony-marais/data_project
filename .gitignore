@@ -18,3 +18,7 @@ metastore_db/
 spark-warehouse/
 derby.log
 *.class
+mlruns/
+.dvc/cache
+.dvc/tmp
+metrics/embed-recall.json
