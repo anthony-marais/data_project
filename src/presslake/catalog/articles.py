@@ -93,6 +93,32 @@ def upsert_fetched_article(
     return result.rowcount == 1
 
 
+def get_article_by_content_hash(
+    conn: psycopg.Connection,
+    content_hash: str,
+) -> dict[str, Any] | None:
+    """Une ligne catalogue par content_hash (outil MCP read)."""
+    row = conn.execute(
+        """
+        SELECT feed_id, title, url, content_hash, status, silver_s3_uri
+        FROM articles
+        WHERE content_hash = %s
+        LIMIT 1
+        """,
+        (content_hash,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "feed_id": row[0],
+        "title": row[1],
+        "url": row[2],
+        "content_hash": row[3],
+        "status": row[4],
+        "silver_s3_uri": row[5],
+    }
+
+
 def list_articles_by_status(
     conn: psycopg.Connection,
     status: str,
