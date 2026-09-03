@@ -23,6 +23,7 @@ from presslake.ingest.feeds import Feed
 from presslake.ingest.seen import DEFAULT_SEEN_PATH, load_seen, mark_seen, save_seen
 from presslake.observability.metrics import record_poll_finished
 from presslake.observability.worker_runs import JOB_POLL, log_worker_run
+from presslake.output import info, report_progress
 from presslake.storage.postgres import get_connection
 from presslake.storage.s3 import get_bucket, get_s3_client
 
@@ -91,7 +92,7 @@ def poll_feed(
                 feed_lang=feed.lang,
             )
 
-        print(f"[NEW] {feed.id} | {title} | {s3_uri}")
+        info(f"[NEW] {feed.id} | {title} | {s3_uri}")
 
     return new_count
 
@@ -114,7 +115,8 @@ def poll_all_dedup(
     total_new = 0
 
     with get_connection() as conn, EventProducer() as producer:
-        for feed in feeds:
+        feed_total = len(feeds)
+        for index, feed in enumerate(feeds, start=1):
             total_new += poll_feed(
                 feed,
                 seen,
@@ -123,11 +125,12 @@ def poll_all_dedup(
                 conn=conn,
                 producer=producer,
             )
+            report_progress(index, feed_total)
         log_worker_run(conn, JOB_POLL, new_items=total_new)
         conn.commit()
 
     save_seen(seen, seen_path)
     record_poll_finished(new_articles=total_new)
-    print(f"\n→ {total_new} nouvel(s) item(s)")
+    info(f"\n→ {total_new} nouvel(s) item(s)")
 
     return total_new

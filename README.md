@@ -8,7 +8,7 @@ Cadrage : [docs/README.md](docs/README.md) · parcours : [docs/learning-path.md]
 ## État
 
 - [x] Package `presslake` (uv, `src/presslake`) + CI GitHub Actions
-- [x] Compose : Postgres, MinIO, Redpanda, OpenSearch, Qdrant, Open WebUI
+- [x] Compose : Postgres, MinIO, Redpanda, OpenSearch, Qdrant, Open WebUI (+ profil `langfuse`)
 - [x] Ingest RSS → bronze MinIO + catalogue Postgres
 - [x] Parser silver + contrats JSON Schema
 - [x] FastAPI (catalogue, `/metrics`, retrieve, chat, `/v1` OpenAI-compat)
@@ -16,7 +16,7 @@ Cadrage : [docs/README.md](docs/README.md) · parcours : [docs/learning-path.md]
 - [x] Bus Redpanda (`parse --from-kafka` / `--replay`)
 - [x] OpenSearch BM25 + Qdrant (chunks citables)
 - [x] RAG / chat (Ollama local + Open WebUI)
-- [ ] Langfuse (module 13)
+- [x] Eval RAG + traces Langfuse (module 13, profil Compose `langfuse`)
 - [ ] MCP + SDK (module 14)
 - [ ] Spark Scala (module 15)
 - [ ] DVC + MLflow (module 16)
@@ -28,7 +28,24 @@ Cadrage : [docs/README.md](docs/README.md) · parcours : [docs/learning-path.md]
 - Python **3.14** (voir `.python-version`)
 - Pour le chat : [Ollama](https://ollama.com/) sur l’hôte (`ollama serve` + `ollama pull llama3.2:1b`)
 
-## Démarrage
+## Démarrage A→Z
+
+Mode d'emploi commenté (toutes les commandes) :
+
+```bash
+uv run presslake guide
+./scripts/presslake-a-to-z.sh --help
+```
+
+Enchaînement infra + ingest :
+
+```bash
+cp .env.example .env   # mots de passe (MinIO : 8 caractères minimum)
+uv sync
+./scripts/presslake-a-to-z.sh
+```
+
+Ou à la main : `docker compose up -d` puis `uv run presslake db init` puis `uv run presslake pipeline`.
 
 ```bash
 cp .env.example .env
@@ -41,13 +58,12 @@ docker compose ps   # tout healthy
 uv run presslake db init
 ```
 
-Pipeline quotidien (après ingest) :
+Pipeline quotidien (après ingest) — déjà lancé par `presslake pipeline` :
 
 ```bash
-uv run presslake poll
-uv run presslake parse          # ou : parse --from-kafka
-uv run presslake index
-uv run presslake embed
+uv run presslake pipeline          # barre de progression (étape + %)
+# uv run presslake pipeline --verbose
+# uv run presslake pipeline --from-kafka --replay
 ```
 
 Chat CLI et API + UI :
@@ -57,6 +73,9 @@ uv run presslake chat "De quoi parle le corpus aujourd'hui ?"
 uv run presslake serve --host 0.0.0.0   # API :8000
 # Lab module 12 : notebooks/12-rag-chat-exploration.ipynb
 # Open WebUI : http://localhost:3000  (pointe vers PressLake /v1, pas Ollama)
+# Eval RAG : uv run presslake eval --skip-llm
+# Langfuse (optionnel) : docker compose --profile langfuse up -d  → :3100
+# Lab module 13 : notebooks/13-langfuse-eval-exploration.ipynb
 ```
 
 Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU AMD : `scripts/setup-ollama-amd-gpu.sh` (test seulement).
@@ -65,6 +84,8 @@ Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU 
 
 | Commande | Rôle |
 |---|---|
+| `presslake guide` | Runbook A→Z, chaque commande commentée |
+| `presslake pipeline` | `poll` → `parse` → `index` → `embed` |
 | `presslake poll` | RSS → bronze + catalogue |
 | `presslake parse` | bronze → silver |
 | `presslake validate examples\|lake` | Contrats JSON Schema |
@@ -72,6 +93,7 @@ Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU 
 | `presslake embed` / `similar` | Chunks + Qdrant |
 | `presslake retrieve` | Hybride BM25 + vecteur (sans LLM) |
 | `presslake chat` | RAG sourcé (Ollama) |
+| `presslake eval` | Jeu YAML retrieve / refus / citations (`--skip-llm`) |
 | `presslake serve` | FastAPI |
 | `presslake ops status` | Dernière écriture ; code 1 si stale |
 | `presslake db init` | Schéma catalogue + migrations |
@@ -88,5 +110,6 @@ Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU 
 | OpenSearch | 9200 | Recherche lexicale |
 | Qdrant | 6333 | Recherche sémantique |
 | Open WebUI | 3000 | Chat (via PressLake `/v1`) |
+| Langfuse (profil `langfuse`) | 3100 | Traces eval RAG |
 | Ollama (hôte) | 11434 | LLM local |
 | FastAPI (hôte) | 8000 | API + RAG |

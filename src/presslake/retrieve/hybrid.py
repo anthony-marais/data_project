@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -14,6 +15,34 @@ from presslake.vector.embed import embed_query
 
 # Constante RRF classique (Cormack et al.) — robuste quand les échelles de score diffèrent.
 RRF_K = 60
+
+# Mots vides FR/EN + méta-eval : sans ça BM25 « match » n'importe quel article.
+_LEXICAL_STOP = frozenset(
+    """
+    a an and are as at be by for from in is it of on or that the this to was were
+    au aux avec ce ces dans de des du elle en et eux il je la le les leur lui ma
+    mais me mes moi mon ne nos notre nous on ou par pas pour qu que qui sa se
+    ses son sur ta te tes toi ton tu un une vos votre vous y
+    quel quelle quels quels quelles comment combien
+    dit parle selon donne corpus presslake flux rss aujourd hui aujourd'hui
+    article articles question réponse
+    """.split()
+)
+_TOKEN_RE = re.compile(r"[0-9A-Za-zÀ-ÿ_-]+", re.UNICODE)
+
+
+def lexical_query(question: str) -> str | None:
+    """
+    Termes BM25 utiles : stopwords enlevés ; si un token « rare » (long / chiffre)
+    est présent, on ne cherche que ceux-là (cas eval hors corpus).
+    """
+    tokens = [t for t in _TOKEN_RE.findall(question) if len(t) > 2]
+    kept = [t for t in tokens if t.casefold() not in _LEXICAL_STOP]
+    if not kept:
+        return None
+    rare = [t for t in kept if len(t) >= 12 or any(c.isdigit() for c in t)]
+    chosen = rare if rare else kept
+    return " ".join(chosen)
 
 
 def _passage_from_bm25(hit: dict[str, Any]) -> RetrievedPassage:
@@ -124,9 +153,12 @@ def _bm25_ranked(
     depth: int,
     lang: str | None,
 ) -> list[RetrievedPassage]:
+    lexical = lexical_query(query)
+    if not lexical:
+        return []
     hits = search_articles(
         get_opensearch_client(),
-        query,
+        lexical,
         limit=depth,
         lang=lang,
     )
@@ -148,6 +180,34 @@ def _vector_ranked(
     return [_passage_from_vector(hit) for hit in hits]
 
 
+def filter_relevant_passages(
+    passages: list[RetrievedPassage],
+    *,
+    min_vector_score: float | None = None,
+) -> list[RetrievedPassage]:
+    """
+    Écarte les voisins Qdrant trop faibles (hors sujet).
+
+    Un hit BM25 est conservé. Un passage vector-only doit dépasser
+    `RAG_MIN_VECTOR_SCORE` (défaut 0.45). Qdrant renvoie toujours un top-k.
+    """
+    if min_vector_score is None:
+        from presslake.rag.config import rag_min_vector_score
+
+        min_vector_score = rag_min_vector_score()
+    if min_vector_score <= 0:
+        return list(passages)
+
+    kept: list[RetrievedPassage] = []
+    for passage in passages:
+        if "bm25" in passage.sources:
+            kept.append(passage)
+            continue
+        if passage.vector_score is not None and passage.vector_score >= min_vector_score:
+            kept.append(passage)
+    return kept
+
+
 def retrieve_passages(
     query: str,
     *,
@@ -156,6 +216,7 @@ def retrieve_passages(
     per_source_limit: int | None = None,
     bm25_only: bool = False,
     vector_only: bool = False,
+    skip_min_score: bool = False,
 ) -> list[RetrievedPassage]:
     """
     Retrieve hybride one-shot : BM25 + similarité sémantique, fusion RRF.
@@ -166,9 +227,10 @@ def retrieve_passages(
         lang: filtre optionnel `fr` ou `en` (OpenSearch + Qdrant).
         per_source_limit: profondeur par moteur (défaut = limit).
         bm25_only / vector_only: forcer un seul moteur (debug).
+        skip_min_score: ne pas filtrer les voisins Qdrant trop faibles.
 
     Returns:
-        Passages triés par score RRF décroissant.
+        Passages triés par score RRF décroissant, après seuil vectoriel.
     """
     if bm25_only and vector_only:
         raise ValueError("bm25_only et vector_only sont mutuellement exclusifs")
@@ -198,8 +260,7 @@ def retrieve_passages(
         return []
 
     if len(ranked) == 1:
-        single = ranked[0][:limit]
-        return [
+        fused = [
             RetrievedPassage(
                 text=p.text,
                 score=p.lexical_score or p.vector_score or 0.0,
@@ -214,7 +275,11 @@ def retrieve_passages(
                 lexical_score=p.lexical_score,
                 vector_score=p.vector_score,
             )
-            for p in single
+            for p in ranked[0][:limit]
         ]
+    else:
+        fused = fuse_rrf(ranked, limit=limit)
 
-    return fuse_rrf(ranked, limit=limit)
+    if skip_min_score:
+        return fused
+    return filter_relevant_passages(fused)

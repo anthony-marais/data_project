@@ -26,14 +26,81 @@ from presslake.storage.postgres import get_connection
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="presslake",
-        description="Datalake presse — ingest RSS, lake, RAG sourcé.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Datalake presse — ingest RSS, lake médaillon, RAG sourcé.",
+        epilog=(
+            "De A à Z (commandes commentées) :  uv run presslake guide\n"
+            "Ingest quotidien :                 uv run presslake pipeline\n"
+            "Script shell :                     ./scripts/presslake-a-to-z.sh"
+        ),
     )
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("poll", help="Poll RSS → bronze → catalogue.")
+    sub.add_parser(
+        "guide",
+        help="Afficher le mode d'emploi A→Z (chaque commande commentée).",
+        description=(
+            "Imprime le runbook : infra Docker, db init, poll/parse/index/embed, "
+            "retrieve/chat/eval, Langfuse. Rien n'est exécuté."
+        ),
+    )
 
-    parse_parser = sub.add_parser("parse", help="Parser bronze → silver.")
+    pipeline_parser = sub.add_parser(
+        "pipeline",
+        help="Enchaîner poll → parse → index → embed.",
+        description=(
+            "Pipeline quotidien. poll écrit le bronze ; parse le silver ; "
+            "index ouvre BM25 ; embed pousse les chunks dans Qdrant. "
+            "N'inclut pas docker compose ni le chat."
+        ),
+    )
+    pipeline_parser.add_argument(
+        "--from-kafka",
+        action="store_true",
+        help="parse via topic presslake.articles.ingested au lieu du catalogue.",
+    )
+    pipeline_parser.add_argument(
+        "--replay",
+        action="store_true",
+        help="Avec --from-kafka : rejouer depuis l'offset 0.",
+    )
+    pipeline_parser.add_argument("--limit", type=int, default=None)
+    pipeline_parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Recréer l'index OpenSearch et la collection Qdrant avant d'écrire.",
+    )
+    pipeline_parser.add_argument(
+        "--skip-poll",
+        action="store_true",
+        help="Ne pas re-fetcher les RSS (parse + index + embed seulement).",
+    )
+    pipeline_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Logs [NEW]/[PARSED]/… au lieu de la barre de progression.",
+    )
+
+    sub.add_parser(
+        "poll",
+        help="Poll RSS → bronze MinIO + catalogue Postgres.",
+        description=(
+            "Lit config/feeds.yml, télécharge chaque flux, déduplique (seen + URL), "
+            "écrit un JSON immuable dans MinIO (partition source=/dt=) et upsert "
+            "une ligne catalogue (statut fetched). 2e poll sans nouvel item = 0 écriture."
+        ),
+    )
+
+    parse_parser = sub.add_parser(
+        "parse",
+        help="Parser bronze → silver (texte extractible).",
+        description=(
+            "Pour chaque article fetched : extraire titre/texte (permalink ou résumé RSS), "
+            "écrire l'enveloppe silver dans MinIO, passer le statut à parsed. "
+            "Le LLM ne lit jamais le HTML bronze, seulement ce silver."
+        ),
+    )
     parse_parser.add_argument("--limit", type=int, default=None)
     parse_parser.add_argument(
         "--from-kafka",
@@ -46,24 +113,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="Rejeu depuis l'offset 0 (avec --from-kafka).",
     )
 
-    validate_parser = sub.add_parser("validate", help="Valider les contrats JSON Schema.")
+    validate_parser = sub.add_parser(
+        "validate",
+        help="Valider les contrats JSON Schema.",
+        description=(
+            "examples = fichiers sample du repo. lake = objets bronze/silver déjà "
+            "écrits dans MinIO (échantillon --limit). Échoue si le schéma n'est pas respecté."
+        ),
+    )
     validate_parser.add_argument("target", choices=["examples", "lake"])
     validate_parser.add_argument("--limit", type=int, default=10)
 
-    serve_parser = sub.add_parser("serve", help="API FastAPI + /metrics.")
+    serve_parser = sub.add_parser(
+        "serve",
+        help="API FastAPI (catalogue, retrieve, chat, /v1, /metrics).",
+        description=(
+            "Ouvre :8000. Open WebUI doit pointer vers http://<hôte>:8000/v1 "
+            "(pas vers Ollama). --host 0.0.0.0 si l'UI tourne dans Docker."
+        ),
+    )
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
     serve_parser.add_argument("--reload", action="store_true")
 
-    ops_parser = sub.add_parser("ops", help="Surveillance ops.")
+    ops_parser = sub.add_parser(
+        "ops",
+        help="Surveillance ops.",
+        description="Alerte si le catalogue n'a plus d'écriture depuis PRESSLAKE_STALE_HOURS (défaut 6 h).",
+    )
     ops_sub = ops_parser.add_subparsers(dest="ops_command", required=True)
     ops_sub.add_parser("status", help="Dernière écriture + alerte 6 h.")
 
-    db_parser = sub.add_parser("db", help="Opérations base de données.")
+    db_parser = sub.add_parser(
+        "db",
+        help="Opérations base de données.",
+        description="init : crée / aligne le schéma catalogue (articles, worker_runs, …).",
+    )
     db_sub = db_parser.add_subparsers(dest="db_command", required=True)
     db_sub.add_parser("init", help="Applique schema.sql + migrations.")
 
-    index_parser = sub.add_parser("index", help="Indexer silver → OpenSearch.")
+    index_parser = sub.add_parser(
+        "index",
+        help="Indexer silver → OpenSearch (BM25).",
+        description=(
+            "Lit les articles parsed/indexed, pousse titre+texte dans presslake-articles. "
+            "--recreate si tu as changé le mapping (ex. champs langue)."
+        ),
+    )
     index_parser.add_argument("--limit", type=int, default=None)
     index_parser.add_argument(
         "--recreate",
@@ -71,7 +167,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Supprime et recrée l'index (re-indexe parsed + indexed).",
     )
 
-    search_parser = sub.add_parser("search", help="Recherche BM25 OpenSearch.")
+    search_parser = sub.add_parser(
+        "search",
+        help="Recherche BM25 OpenSearch (mots exacts).",
+        description="Ne lance pas le LLM. Utile pour un « mot rare » ou un nom propre.",
+    )
     search_parser.add_argument("query", help="Termes à chercher.")
     search_parser.add_argument("--limit", type=int, default=5)
     search_parser.add_argument(
@@ -81,7 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Filtre content_lang + analyzer dédié.",
     )
 
-    embed_parser = sub.add_parser("embed", help="Chunker + embedder silver → Qdrant.")
+    embed_parser = sub.add_parser(
+        "embed",
+        help="Chunker + embedder silver → Qdrant.",
+        description=(
+            "Découpe le texte (chunks citables), calcule les vecteurs, upsert "
+            "la collection presslake-chunks. Statut catalogue → embedded."
+        ),
+    )
     embed_parser.add_argument("--limit", type=int, default=None)
     embed_parser.add_argument(
         "--recreate",
@@ -89,7 +196,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Supprime et recrée la collection (re-embed indexed + embedded).",
     )
 
-    similar_parser = sub.add_parser("similar", help="Recherche sémantique Qdrant.")
+    similar_parser = sub.add_parser(
+        "similar",
+        help="Recherche sémantique Qdrant (paraphrase).",
+        description="Cosine sur les chunks. Complément du BM25 ; le chat fusionne les deux (retrieve).",
+    )
     similar_parser.add_argument("query", help="Question ou phrase en langage naturel.")
     similar_parser.add_argument("--limit", type=int, default=5)
     similar_parser.add_argument(
@@ -101,7 +212,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     retrieve_parser = sub.add_parser(
         "retrieve",
-        help="Retrieve hybride BM25 + Qdrant (passages citables, sans LLM).",
+        help="Retrieve hybride BM25 + Qdrant (sans LLM).",
+        description=(
+            "Même retrieve que le chat : fusion RRF, seuil RAG_MIN_VECTOR_SCORE. "
+            "Debug : --bm25-only, --vector-only, --raw (voisins Qdrant non filtrés)."
+        ),
     )
     retrieve_parser.add_argument("query", help="Question ou mots-clés.")
     retrieve_parser.add_argument("--limit", type=int, default=10)
@@ -121,8 +236,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Qdrant uniquement (debug).",
     )
+    retrieve_parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Ne pas filtrer les voisins Qdrant sous RAG_MIN_VECTOR_SCORE.",
+    )
 
-    chat_parser = sub.add_parser("chat", help="Chat RAG sur le corpus (Ollama local).")
+    chat_parser = sub.add_parser(
+        "chat",
+        help="Chat RAG sur le corpus (Ollama local).",
+        description=(
+            "retrieve → prompt avec extraits [1]…[k] → Ollama → réponse + footer sources. "
+            "Sans question : mode interactif. Refus si aucun passage pertinent."
+        ),
+    )
     chat_parser.add_argument("question", nargs="?", default=None, help="Question (mode one-shot).")
     chat_parser.add_argument("--limit", type=int, default=None, help="Nombre de passages retrieve.")
     chat_parser.add_argument("--lang", choices=["fr", "en"], default=None)
@@ -131,6 +258,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Afficher les passages sans appeler Ollama.",
     )
+
+    eval_parser = sub.add_parser(
+        "eval",
+        help="Jeu d'eval RAG (retrieve / refus / citations).",
+        description=(
+            "Charge config/eval/rag-v1.yml. --skip-llm = retrieve seul (pas d'Ollama). "
+            "Exit 1 s'il reste des cas KO. Traces Langfuse si LANGFUSE_TRACING_ENABLED=true."
+        ),
+    )
+    eval_parser.add_argument(
+        "--set",
+        dest="eval_set",
+        default=None,
+        help="Fichier YAML (défaut config/eval/rag-v1.yml).",
+    )
+    eval_parser.add_argument(
+        "--skip-llm",
+        action="store_true",
+        help="Scorer le retrieve seul (pas d'Ollama).",
+    )
+    eval_parser.add_argument("--limit", type=int, default=None)
+    eval_parser.add_argument("--lang", choices=["fr", "en"], default=None)
 
     return parser
 
@@ -185,6 +334,29 @@ def _run_ops_status() -> int:
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
+
+    if args.command == "guide":
+        from presslake.guide import GUIDE_TEXT
+
+        print(GUIDE_TEXT)
+        return
+
+    if args.command == "pipeline":
+        from presslake.pipeline import run_ingest_pipeline
+
+        try:
+            run_ingest_pipeline(
+                from_kafka=args.from_kafka,
+                replay=args.replay,
+                limit=args.limit,
+                recreate=args.recreate,
+                skip_poll=args.skip_poll,
+                verbose=args.verbose,
+            )
+        except ValueError as exc:
+            print(f"Erreur : {exc}", file=sys.stderr)
+            sys.exit(2)
+        return
 
     if args.command == "poll":
         poll_all_dedup(load_feeds())
@@ -276,6 +448,7 @@ def main(argv: list[str] | None = None) -> None:
             lang=args.lang,
             bm25_only=args.bm25_only,
             vector_only=args.vector_only,
+            skip_min_score=args.raw,
         )
         _print_retrieved_passages(passages, lang=args.lang)
 
@@ -286,6 +459,55 @@ def main(argv: list[str] | None = None) -> None:
             lang=args.lang,
             retrieve_only=args.retrieve_only,
         )
+
+    elif args.command == "eval":
+        sys.exit(
+            _run_eval(
+                set_path=args.eval_set,
+                skip_llm=args.skip_llm,
+                limit=args.limit,
+                lang=args.lang,
+            )
+        )
+
+
+def _run_eval(
+    *,
+    set_path: str | None,
+    skip_llm: bool,
+    limit: int | None,
+    lang: str | None,
+) -> int:
+    from presslake.eval.run import format_report, run_eval
+    from presslake.eval.tracing import tracing_enabled
+
+    if not skip_llm and not check_ollama_available():
+        print(
+            f"Ollama inaccessible — `ollama serve` / `ollama pull {ollama_model()}`, "
+            "ou relancer avec --skip-llm.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        eval_set, scores = run_eval(
+            set_path=set_path,
+            skip_llm=skip_llm,
+            limit=limit,
+            lang=lang,
+        )
+    except OllamaError as exc:
+        print(f"Erreur Ollama : {exc}", file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as exc:
+        print(f"Jeu d'eval illisible : {exc}", file=sys.stderr)
+        return 2
+
+    print(format_report(eval_set, scores))
+    if tracing_enabled():
+        print("\nTraces envoyées vers Langfuse (LANGFUSE_BASE_URL).")
+    failed = sum(1 for s in scores if not s.ok)
+    return 1 if failed else 0
 
 
 def _run_chat(
