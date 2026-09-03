@@ -236,6 +236,24 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
 
+  # Module 15 — one-shot : docker compose --profile spark build spark-backfill
+  # Puis : uv run presslake spark   (silver JSON → gold parquet). Pas dans le up quotidien.
+  spark-backfill:
+    profiles: ["spark"]
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_S3A_ENDPOINT: http://minio:9000
+      SPARK_INPUT: s3a://${MINIO_BUCKET:-presslake}/silver
+      SPARK_OUTPUT: s3a://${MINIO_BUCKET:-presslake}/gold/layer=silver_parquet
+      IVY_HOME: /tmp/ivy2
+
   langfuse-web:
     profiles: ["langfuse"]
     image: langfuse/langfuse:3

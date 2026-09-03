@@ -52,6 +52,8 @@ jobs:
           uv run presslake guide
           uv run presslake pipeline --help
           uv run presslake mcp --help
+          uv run presslake spark --help
+          uv run presslake spark --dry-run
 
       - name: Contrats JSON Schema (exemples)
         run: uv run presslake validate examples
@@ -104,3 +106,29 @@ jobs:
           assert 'error' in denied
           print('mcp ok', names)
           "
+
+      - name: Profil Compose spark (job, pas up quotidien)
+        env:
+          MINIO_ROOT_USER: ci
+          MINIO_ROOT_PASSWORD: cipassword8
+          POSTGRES_USER: presslake
+          POSTGRES_PASSWORD: presslake
+          POSTGRES_DB: presslake
+        run: docker compose --profile spark config --quiet
+
+  spark:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spark
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - name: Tests Spark local (fichier, pas MinIO)
+        run: sbt --batch test
+

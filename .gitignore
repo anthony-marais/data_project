@@ -10,3 +10,11 @@ dist/
 .cursor/
 docs/
 data/
+spark/target/
+spark/project/target/
+spark/project/project/
+.bsp/
+metastore_db/
+spark-warehouse/
+derby.log
+*.class

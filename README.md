@@ -18,7 +18,7 @@ Cadrage : [docs/README.md](docs/README.md) · parcours : [docs/learning-path.md]
 - [x] RAG / chat (Ollama local + Open WebUI)
 - [x] Eval RAG + traces Langfuse (module 13, profil Compose `langfuse`)
 - [x] MCP (outils `search` / `read`, `presslake mcp`)
-- [ ] Spark Scala (module 15)
+- [ ] Spark Scala (module 15) — `presslake spark` (profil Compose `spark`)
 - [ ] DVC + MLflow (module 16)
 
 ## Prérequis
@@ -78,6 +78,8 @@ uv run presslake serve --host 0.0.0.0   # API :8000
 # Lab module 13 : notebooks/13-langfuse-eval-exploration.ipynb
 # MCP : uv run presslake mcp  (Cursor : .cursor/mcp.json)
 # Lab module 14 : notebooks/14-mcp-sdk-exploration.ipynb
+# Spark backfill (profil spark, pas le quotidien) : uv run presslake spark --build
+# Lab module 15 : notebooks/15-spark-scala-exploration.ipynb
 ```
 
 Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU AMD : `scripts/setup-ollama-amd-gpu.sh` (test seulement).
@@ -97,6 +99,7 @@ Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU 
 | `presslake chat` | RAG sourcé (Ollama) |
 | `presslake eval` | Jeu YAML retrieve / refus / citations (`--skip-llm`) |
 | `presslake mcp` | Serveur MCP stdio (`search` + `read`) |
+| `presslake spark` | Backfill Spark : silver JSON → gold parquet |
 | `presslake serve` | FastAPI |
 | `presslake ops status` | Dernière écriture ; code 1 si stale |
 | `presslake db init` | Schéma catalogue + migrations |
@@ -114,5 +117,6 @@ Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU 
 | Qdrant | 6333 | Recherche sémantique |
 | Open WebUI | 3000 | Chat (via PressLake `/v1`) |
 | Langfuse (profil `langfuse`) | 3100 | Traces eval RAG |
+| Spark backfill (profil `spark`) | — | Job one-shot MinIO (pas de port) |
 | Ollama (hôte) | 11434 | LLM local |
 | FastAPI (hôte) | 8000 | API + RAG |

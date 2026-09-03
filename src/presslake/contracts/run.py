@@ -11,6 +11,7 @@ from presslake.catalog.articles import list_articles_by_status
 from presslake.contracts.validate import (
     ContractValidationError,
     validate_bronze,
+    validate_gold,
     validate_silver,
 )
 from presslake.storage.postgres import get_connection
@@ -36,6 +37,8 @@ def validate_examples() -> tuple[int, int]:
                 validate_bronze(payload)
             elif path.name.startswith("silver"):
                 validate_silver(payload)
+            elif path.name.startswith("gold"):
+                validate_gold(payload)
             else:
                 print(f"[SKIP] {path.name} — préfixe inconnu")
                 continue
