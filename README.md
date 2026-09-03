@@ -17,7 +17,7 @@ Cadrage : [docs/README.md](docs/README.md) · parcours : [docs/learning-path.md]
 - [x] OpenSearch BM25 + Qdrant (chunks citables)
 - [x] RAG / chat (Ollama local + Open WebUI)
 - [x] Eval RAG + traces Langfuse (module 13, profil Compose `langfuse`)
-- [ ] MCP + SDK (module 14)
+- [x] MCP (outils `search` / `read`, `presslake mcp`)
 - [ ] Spark Scala (module 15)
 - [ ] DVC + MLflow (module 16)
 
@@ -76,6 +76,8 @@ uv run presslake serve --host 0.0.0.0   # API :8000
 # Eval RAG : uv run presslake eval --skip-llm
 # Langfuse (optionnel) : docker compose --profile langfuse up -d  → :3100
 # Lab module 13 : notebooks/13-langfuse-eval-exploration.ipynb
+# MCP : uv run presslake mcp  (Cursor : .cursor/mcp.json)
+# Lab module 14 : notebooks/14-mcp-sdk-exploration.ipynb
 ```
 
 Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU AMD : `scripts/setup-ollama-amd-gpu.sh` (test seulement).
@@ -94,6 +96,7 @@ Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU 
 | `presslake retrieve` | Hybride BM25 + vecteur (sans LLM) |
 | `presslake chat` | RAG sourcé (Ollama) |
 | `presslake eval` | Jeu YAML retrieve / refus / citations (`--skip-llm`) |
+| `presslake mcp` | Serveur MCP stdio (`search` + `read`) |
 | `presslake serve` | FastAPI |
 | `presslake ops status` | Dernière écriture ; code 1 si stale |
 | `presslake db init` | Schéma catalogue + migrations |

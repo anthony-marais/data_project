@@ -119,6 +119,16 @@ uv run presslake eval --skip-llm
 # Dans .env : LANGFUSE_TRACING_ENABLED=true  puis  uv run presslake eval
 
 ------------------------------------------------------------------------
+7. MCP (module 14) — agent Cursor / autre host
+------------------------------------------------------------------------
+
+# Serveur stdio (le host le lance ; stdout = JSON-RPC, pas de print).
+uv run presslake mcp
+
+# Outils sans protocole :
+#   search = retrieve hybride ; read = silver MinIO (jamais bronze)
+
+------------------------------------------------------------------------
 Script shell (mêmes étapes, exécutable)
 ------------------------------------------------------------------------
   ./scripts/presslake-a-to-z.sh           # infra + db + pipeline ingest

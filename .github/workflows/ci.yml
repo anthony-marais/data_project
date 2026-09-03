@@ -51,6 +51,7 @@ jobs:
           uv run presslake eval --help
           uv run presslake guide
           uv run presslake pipeline --help
+          uv run presslake mcp --help
 
       - name: Contrats JSON Schema (exemples)
         run: uv run presslake validate examples
@@ -87,4 +88,19 @@ jobs:
           assert sc.ok, sc.reason
           assert tracing_enabled() is False
           print('eval ok', len(s.cases), 'cases')
+          "
+
+      - name: MCP tools search + read (sans OpenSearch)
+        run: |
+          uv run python -c "
+          import asyncio
+          import json
+          from presslake.mcp.server import create_server
+          from presslake.mcp.tools import read_silver
+
+          names = sorted(t.name for t in asyncio.run(create_server().list_tools()))
+          assert names == ['read', 'search'], names
+          denied = json.loads(read_silver(silver_s3_uri='s3://presslake/bronze/x.json'))
+          assert 'error' in denied
+          print('mcp ok', names)
           "

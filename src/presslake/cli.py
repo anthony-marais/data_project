@@ -281,6 +281,16 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--limit", type=int, default=None)
     eval_parser.add_argument("--lang", choices=["fr", "en"], default=None)
 
+    sub.add_parser(
+        "mcp",
+        help="Serveur MCP stdio (outils search + read).",
+        description=(
+            "Expose le corpus à un agent (Cursor, Claude, …) via stdin/stdout. "
+            "Ne pas lancer à la main sauf debug : le host MCP spawn le process. "
+            "Aucun print sur stdout (protocole JSON-RPC)."
+        ),
+    )
+
     return parser
 
 
@@ -469,6 +479,11 @@ def main(argv: list[str] | None = None) -> None:
                 lang=args.lang,
             )
         )
+
+    elif args.command == "mcp":
+        from presslake.mcp.server import run_stdio
+
+        run_stdio()
 
 
 def _run_eval(
