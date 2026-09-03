@@ -1,0 +1,15 @@
+# Stage métrique (module 16). `dvc repro` n'appelle pas Qdrant si tu n'as pas l'infra.
+# En local, après index+embed : uv run presslake recall
+stages:
+  recall:
+    cmd: uv run presslake recall --write-metrics
+    deps:
+      - params.yaml
+      - config/eval/rag-v1.yml
+      - src/presslake/mlops/recall.py
+    params:
+      - embed.model
+      - embed.top_k
+    metrics:
+      - metrics/embed-recall.json:
+          cache: false

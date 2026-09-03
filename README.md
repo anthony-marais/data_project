@@ -18,8 +18,8 @@ Cadrage : [docs/README.md](docs/README.md) · parcours : [docs/learning-path.md]
 - [x] RAG / chat (Ollama local + Open WebUI)
 - [x] Eval RAG + traces Langfuse (module 13, profil Compose `langfuse`)
 - [x] MCP (outils `search` / `read`, `presslake mcp`)
-- [ ] Spark Scala (module 15) — `presslake spark` (profil Compose `spark`)
-- [ ] DVC + MLflow (module 16)
+- [x] Spark Scala (module 15) — `presslake spark` (profil Compose `spark`)
+- [ ] DVC + MLflow (module 16) — `presslake recall`
 
 ## Prérequis
 
@@ -80,6 +80,8 @@ uv run presslake serve --host 0.0.0.0   # API :8000
 # Lab module 14 : notebooks/14-mcp-sdk-exploration.ipynb
 # Spark backfill (profil spark, pas le quotidien) : uv run presslake spark --build
 # Lab module 15 : notebooks/15-spark-scala-exploration.ipynb
+# Recall embedding (module 16) : uv run presslake recall --write-metrics
+# Lab module 16 : notebooks/16-dvc-mlflow-exploration.ipynb
 ```
 
 Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU AMD : `scripts/setup-ollama-amd-gpu.sh` (test seulement).
@@ -100,6 +102,7 @@ Ollama CPU forcé (iGPU AMD instable) : `scripts/setup-ollama-cpu-only.sh`. GPU 
 | `presslake eval` | Jeu YAML retrieve / refus / citations (`--skip-llm`) |
 | `presslake mcp` | Serveur MCP stdio (`search` + `read`) |
 | `presslake spark` | Backfill Spark : silver JSON → gold parquet |
+| `presslake recall` | Recall@k embedding (DVC metrics, MLflow opt-in) |
 | `presslake serve` | FastAPI |
 | `presslake ops status` | Dernière écriture ; code 1 si stale |
 | `presslake db init` | Schéma catalogue + migrations |

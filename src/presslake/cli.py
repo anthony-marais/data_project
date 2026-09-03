@@ -3,6 +3,7 @@ Point d'entrée CLI : uv run presslake <commande>
 """
 
 import argparse
+import os
 import sys
 
 from presslake.catalog.db import init_schema
@@ -316,6 +317,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Lister les objets MinIO sous gold/ (sans lancer Spark).",
     )
 
+    recall_parser = sub.add_parser(
+        "recall",
+        help="Recall@k du retrieve (expérience embedding, module 16).",
+        description=(
+            "Mesure Recall@k sur les cas grounded du jeu rag-v1. "
+            "Optionnel : écrire metrics/embed-recall.json, log MLflow, "
+            "enregistrer un baseline pour rollback."
+        ),
+    )
+    recall_parser.add_argument("--k", type=int, default=None, help="Défaut : params.yaml / RAG_TOP_K.")
+    recall_parser.add_argument(
+        "--set",
+        dest="eval_set",
+        default=None,
+        help="Jeu YAML (défaut config/eval/rag-v1.yml).",
+    )
+    recall_parser.add_argument(
+        "--write-metrics",
+        action="store_true",
+        help="Écrire metrics/embed-recall.json (DVC metrics).",
+    )
+    recall_parser.add_argument(
+        "--mlflow",
+        action="store_true",
+        help="Logger un run MLflow (MLFLOW_ENABLED ou MLFLOW_TRACKING_URI).",
+    )
+    recall_parser.add_argument(
+        "--register",
+        action="store_true",
+        help="Sauver le modèle courant dans config/embed-registry.json.",
+    )
+    recall_parser.add_argument(
+        "--rollback",
+        action="store_true",
+        help="Afficher les commandes pour revenir au registre (n'exécute pas embed).",
+    )
+
     sub.add_parser(
         "mcp",
         help="Serveur MCP stdio (outils search + read).",
@@ -375,6 +413,33 @@ def _run_ops_status() -> int:
     print(f"Stale             : {status.stale}")
 
     return 1 if status.stale else 0
+
+
+def _run_recall(args: argparse.Namespace) -> int:
+    from presslake.mlops.recall import evaluate_recall, format_report, write_metrics
+    from presslake.mlops.registry import register_report, rollback_instructions
+    from presslake.mlops.tracking import log_recall
+
+    if args.rollback:
+        print(rollback_instructions())
+        return 0
+
+    try:
+        report = evaluate_recall(k=args.k, set_path=args.eval_set)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"Erreur recall : {exc}", file=sys.stderr)
+        return 1
+
+    print(format_report(report))
+    if args.write_metrics:
+        print(f"\nmetrics → {write_metrics(report)}")
+    if args.mlflow:
+        os.environ["MLFLOW_ENABLED"] = "true"
+        uri = log_recall(report)
+        print(f"MLflow  → {uri}" if uri else "MLflow : rien d'écrit")
+    if args.register:
+        print(f"registre → {register_report(report)}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -527,6 +592,9 @@ def main(argv: list[str] | None = None) -> None:
                 list_only=args.list,
             )
         )
+
+    elif args.command == "recall":
+        sys.exit(_run_recall(args))
 
     elif args.command == "mcp":
         from presslake.mcp.server import run_stdio

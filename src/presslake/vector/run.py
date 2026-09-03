@@ -11,7 +11,7 @@ from presslake.storage.postgres import get_connection
 from presslake.storage.s3 import get_json_object, get_s3_client, parse_s3_uri
 from presslake.vector.client import get_qdrant_client
 from presslake.vector.collection import COLLECTION_CHUNKS, recreate_collection, upsert_chunks
-from presslake.vector.embed import embed_passages
+from presslake.vector.embed import embed_passages, embed_query
 
 
 def embed_article(
@@ -66,8 +66,9 @@ def embed_all(*, limit: int | None = None, recreate: bool = False) -> int:
     qdrant_client = get_qdrant_client()
 
     if recreate:
-        recreate_collection(qdrant_client)
-        info(f"Collection {COLLECTION_CHUNKS} recréée.")
+        size = len(embed_query("presslake dimension probe"))
+        recreate_collection(qdrant_client, vector_size=size)
+        info(f"Collection {COLLECTION_CHUNKS} recréée (dim={size}).")
 
     with get_connection() as conn:
         articles = list_articles_to_embed(
